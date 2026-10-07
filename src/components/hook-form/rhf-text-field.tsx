@@ -1,8 +1,8 @@
 import React from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
-import { Input } from '@/components/ui/input';
+import { Input, type InputProps } from '@/components/ui/input';
 
-type Props = React.InputHTMLAttributes<HTMLInputElement> & {
+type Props = Omit<InputProps, 'name' | 'label'> & {
   name: string;
   label: string;
 };
@@ -12,7 +12,7 @@ export default function RHFTextField({ name, label, type, ...other }: Props) {
 
   return (
     <div className="mb-2 w-full">
-      <label htmlFor={name} className="block text-sm font-medium text-gray-500">
+      <label htmlFor={name} className="block text-sm font-medium text-gray-500 dark:text-slate-400">
         {label}
       </label>
       <Controller
@@ -38,7 +38,7 @@ export default function RHFTextField({ name, label, type, ...other }: Props) {
               {...other}
             />
             {error && (
-              <p className="mt-1 text-xs text-red-600" id={`${name}-error`}>
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400" id={`${name}-error`}>
                 {error.message}
               </p>
             )}

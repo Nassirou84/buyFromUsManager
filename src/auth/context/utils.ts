@@ -32,6 +32,19 @@ export const isValidToken = (accessToken: string) => {
 
 // ----------------------------------------------------------------------
 
+// True when the token is missing, expired, or about to expire within `withinMs`.
+export const isTokenExpiringSoon = (accessToken: string | null, withinMs = 60_000) => {
+  if (!accessToken) {
+    return true;
+  }
+
+  const { exp } = jwtDecode(accessToken);
+
+  return exp * 1000 - Date.now() <= withinMs;
+};
+
+// ----------------------------------------------------------------------
+
 // Refresh a little before the token actually expires, so in-flight requests
 // don't race the expiry boundary.
 const REFRESH_BEFORE_EXPIRY_MS = 60_000;
