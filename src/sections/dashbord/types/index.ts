@@ -1,11 +1,29 @@
-export type Marketplace = 'amazon' | 'ebay' | 'aliexpress' | 'direct';
+export type Marketplace = 'amazon' | 'ebay' | 'bestbuy' | 'walmart' | 'other';
 
 export type SyncStatus = 'synced' | 'price_shifted' | 'depleted' | 'paused' | 'draft';
+
+export type ProductCondition = 'new' | 'used' | 'reconditioned';
+
+export interface ProductVariant {
+  id: string;
+  title: string;
+  price: number;
+  image: string;
+  // Uploaded file posted to the api; `image` is only its local preview URL.
+  imageFile?: File;
+}
+
+export interface ProductDetail {
+  name: string;
+  value: string;
+}
 
 export interface DropshipProduct {
   id: string;
   sku: string;
   title: string;
+  brand?: string;
+  condition?: ProductCondition;
   scrapedSubtitle: string;
   sourceMarketplace: Marketplace;
   sourceLabel: string;
@@ -22,6 +40,10 @@ export interface DropshipProduct {
   statusLabel?: string;
   inStock: boolean;
   image: string;
+  images?: string[];
+  details?: ProductDetail[];
+  features?: string[];
+  variants?: ProductVariant[];
   imageAlt: string;
   lastSyncTime: string;
   isDelisted?: boolean;

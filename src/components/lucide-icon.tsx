@@ -69,11 +69,13 @@ import {
   TriangleAlert,
   FileUp,
   RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 
 // Maps the icon names used across the app to their lucide-react equivalent.
 const ICONS: Record<string, LucideIcon> = {
   account_tree: Workflow,
+  auto_awesome: Sparkles,
   add: Plus,
   add_circle: CirclePlus,
   arrow_forward: ArrowRight,

@@ -55,7 +55,7 @@ export const CatalogHeader: React.FC<CatalogHeaderProps> = ({
           onClick={onSyncAll}
           className="flex items-center gap-2 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#f8f9ff] dark:hover:bg-slate-700 text-[#0b1c30] dark:text-slate-200 text-[13px] font-semibold rounded-lg border border-[#c3c6d7] dark:border-slate-700 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
         >
-          <Icon name="sync" className="text-[18px] text-[#004ac6] dark:text-blue-400"/>
+          <Icon name="sync" className="text-[18px] text-[#004ac6] dark:text-blue-400" />
           <span>{t('sync_all_scrapers')}</span>
         </button>
 
@@ -64,7 +64,7 @@ export const CatalogHeader: React.FC<CatalogHeaderProps> = ({
           onClick={onManageCategories}
           className="flex items-center gap-2 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#f8f9ff] dark:hover:bg-slate-700 text-[#0b1c30] dark:text-slate-200 text-[13px] font-semibold rounded-lg border border-[#c3c6d7] dark:border-slate-700 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
         >
-          <Icon name="account_tree" className="text-[18px] text-[#565e74] dark:text-slate-400"/>
+          <Icon name="account_tree" className="text-[18px] text-[#565e74] dark:text-slate-400" />
           <span>{t('manage_categories')}</span>
         </button>
 
@@ -77,10 +77,9 @@ export const CatalogHeader: React.FC<CatalogHeaderProps> = ({
             aria-haspopup="true"
             className="flex items-center gap-1.5 px-4 py-2 bg-[#004ac6] hover:bg-[#003ea8] text-white text-[13px] font-semibold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
           >
-            <Icon name="add" className="text-[18px]"/>
-            <span>+ {t('add_new_product')}</span>
-            <Icon name="expand_more" className={`text-[18px] transition-transform duration-200 ${
-                dropdownOpen ? 'rotate-180' : ''
+            <Icon name="add" className="text-[18px]" />
+            <span>{t('add_new_product')}</span>
+            <Icon name="expand_more" className={`text-[18px] transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''
               }`} />
           </button>
 
@@ -101,7 +100,7 @@ export const CatalogHeader: React.FC<CatalogHeaderProps> = ({
                   className="w-full flex items-start gap-3 p-3 rounded-lg hover:bg-[#eff4ff] dark:hover:bg-slate-800 text-left transition-colors cursor-pointer group"
                 >
                   <div className="w-8 h-8 rounded-lg bg-[#dbe1ff] dark:bg-blue-900/60 text-[#004ac6] dark:text-blue-300 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                    <Icon name="travel_explore" className="text-[19px]"/>
+                    <Icon name="travel_explore" className="text-[19px]" />
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[13px] font-bold text-[#0b1c30] dark:text-white flex items-center gap-1.5">
@@ -123,7 +122,7 @@ export const CatalogHeader: React.FC<CatalogHeaderProps> = ({
                   className="w-full flex items-start gap-3 p-3 rounded-lg hover:bg-[#eff4ff] dark:hover:bg-slate-800 text-left transition-colors cursor-pointer group"
                 >
                   <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                    <Icon name="edit_note" className="text-[19px]"/>
+                    <Icon name="edit_note" className="text-[19px]" />
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[13px] font-bold text-[#0b1c30] dark:text-white flex items-center gap-1.5">

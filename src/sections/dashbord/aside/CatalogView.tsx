@@ -10,7 +10,7 @@ import { ProductTable } from './ProductTable';
 import { ProductGrid } from './ProductGrid';
 import { ScraperThroughputCards } from './ScraperThroughputCards';
 import { PricingMarkupCard } from './PricingMarkupCard';
-import { AddProductModal } from '../modals/AddProductModal';
+import { AddProductModal } from '../modals/add-product';
 import { SyncScrapersModal } from '../modals/SyncScrapersModal';
 import { ManageCategoriesModal } from '../modals/ManageCategoriesModal';
 import { ConfigureMarkupModal } from '../modals/ConfigureMarkupModal';
@@ -39,10 +39,6 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
   const { data: summary } = useGetProductSummary();
 
-  console.log(summary);
-
-  // Pre-select the two products from the screenshot:
-  // prod-1 (Cashmere Blend Overcoat) and prod-2 (Atelier Heritage Trench)
   const [selectedIds, setSelectedIds] = useState<string[]>(['prod-1', 'prod-2']);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('table');

@@ -1,5 +1,5 @@
 export interface SubCategory {
-  id: string;
+  id: number;
   title: string;
   icon: string;
   description: string;
@@ -9,8 +9,9 @@ export interface SubCategory {
 }
 
 export interface Category {
-  [key: string]: any;
-  id: string;
+  '@id': string;
+  '@type': string;
+  id: number;
   title: string;
   icon: string;
   description: string;
