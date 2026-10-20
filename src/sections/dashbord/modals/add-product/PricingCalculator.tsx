@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 interface PricingCalculatorProps {
   cost: number;
   retailPrice: number;
-  margin: number;
   onCostChange: (value: number) => void;
   onRetailPriceChange: (value: number) => void;
 }
@@ -13,11 +12,13 @@ interface PricingCalculatorProps {
 export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
   cost,
   retailPrice,
-  margin,
   onCostChange,
   onRetailPriceChange
 }) => {
   const { t } = useLocales();
+
+  // Percentage added on top of the source cost
+  const markup = cost > 0 ? ((retailPrice - cost) / cost) * 100 : 0;
 
   return (
     <div className="p-3.5 bg-[#eff4ff]/60 dark:bg-slate-800/60 rounded-xl border border-[#dce9ff] dark:border-slate-700 flex flex-col gap-2.5">
@@ -46,8 +47,8 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
 
       <div className="flex items-center justify-between text-[12px] bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-[#e5eeff] dark:border-slate-800">
         <div className="flex items-center gap-2">
-          <span className="text-[#565e74] dark:text-slate-400">{t('gross_margin_colon')}</span>
-          <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">{margin.toFixed(1)}%</span>
+          <span className="text-[#565e74] dark:text-slate-400">{t('markup_colon')}</span>
+          <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">+{markup.toFixed(1)}%</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[#565e74] dark:text-slate-400">{t('estimated_markup_colon')}</span>

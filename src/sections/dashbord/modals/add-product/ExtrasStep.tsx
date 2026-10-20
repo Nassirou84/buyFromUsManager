@@ -12,9 +12,11 @@ interface ExtrasStepProps {
   onBack: () => void;
   onSave: () => void;
   onCancel: () => void;
+  submitLabel?: string;
+  isSaving?: boolean;
 }
 
-export const ExtrasStep: React.FC<ExtrasStepProps> = ({ values, setField, onBack, onSave, onCancel }) => {
+export const ExtrasStep: React.FC<ExtrasStepProps> = ({ values, setField, onBack, onSave, onCancel, submitLabel, isSaving }) => {
   const { t } = useLocales();
 
   return (
@@ -44,8 +46,8 @@ export const ExtrasStep: React.FC<ExtrasStepProps> = ({ values, setField, onBack
       <StepFooter
         onBack={onBack}
         onCancel={onCancel}
-        submitLabel={t('save_publish_to_catalog')}
-        submitDisabled={!values.title.trim()}
+        submitLabel={submitLabel ?? t('save_publish_to_catalog')}
+        submitDisabled={!values.title.trim() || isSaving}
       />
     </form>
   );

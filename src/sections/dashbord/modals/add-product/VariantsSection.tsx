@@ -32,19 +32,37 @@ export const VariantsSection: React.FC<VariantsSectionProps> = ({ variants, defa
     update(id, { image: URL.createObjectURL(file), imageFile: file });
   };
 
+  const handleClearAll = () => {
+    variants.forEach((v) => {
+      if (v.image?.startsWith('blob:')) URL.revokeObjectURL(v.image);
+    });
+    onChange([]);
+  };
+
   return (
     <section className={`${SECTION_CLASS} ${className}`}>
       <div className="flex items-center justify-between">
         <span className={SECTION_TITLE_CLASS}>
           {t('variants')} ({variants.length})
         </span>
-        <button
-          type="button"
-          onClick={() => onChange([...variants, { id: newId(), title: '', price: defaultPrice, image: '' }])}
-          className={ADD_LINK_CLASS}
-        >
-          + {t('add_variant')}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onChange([...variants, { id: newId(), title: '', price: defaultPrice, image: '' }])}
+            className={ADD_LINK_CLASS}
+          >
+            + {t('add_variant')}
+          </button>
+          {variants.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="text-[13px] font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer"
+            >
+              {t('clear_all_variants')}
+            </button>
+          )}
+        </div>
       </div>
       <input type="file" accept="image/*" ref={fileRef} onChange={handleImage} className="hidden" />
       {variants.length === 0 && <p className={EMPTY_CLASS}>{t('no_variants_yet')}</p>}

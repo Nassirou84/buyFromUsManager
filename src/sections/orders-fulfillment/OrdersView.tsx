@@ -1,7 +1,7 @@
 import useLocales from '@/locales/use-locales';
 import React, { useState } from 'react';
 import { Icon } from '@/components/lucide-icon';
-import { Order, OrderStatus } from '../../types';
+import { Order, OrderStatus } from './types';
 import { Trans } from 'react-i18next';
 
 interface OrdersViewProps {

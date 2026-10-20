@@ -17,11 +17,14 @@ interface ReviewStepProps {
   values: ProductFormValues;
   setField: SetField;
   scrapedUrl?: string;
-  onBack: () => void;
+  onBack?: () => void;
   onNext: () => void;
   onCancel: () => void;
   onGenerateWithAi?: () => void;
-  aiLoading: boolean;
+  aiLoading?: boolean;
+  // Edit mode: keep the stored retail price until the subcategory is changed
+  preserveInitialPricing?: boolean;
+  submitLabel?: string;
 }
 
 export const ReviewStep: React.FC<ReviewStepProps> = ({
@@ -32,7 +35,9 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
   onNext,
   onCancel,
   onGenerateWithAi,
-  aiLoading,
+  aiLoading = false,
+  preserveInitialPricing = false,
+  submitLabel,
 }) => {
   const { t } = useLocales();
 
@@ -40,6 +45,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
 
   const [subcategories, setSubcategories] = React.useState<{ value: string; label: string }[]>([]);
   const [margin, setMargin] = React.useState(0);
+  const initialSubCategory = React.useRef(values.subCategory);
 
   const applyRetail = (newRetail: number) => {
     setField('retailPrice', newRetail);
@@ -76,6 +82,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
   useEffect(() => {
     const allSubcategories = categories?.flatMap((c) => c.subcategories) || [];
     setMargin(allSubcategories.find((sc) => String(sc.id) === String(values.subCategory))?.markup || 0);
+    if (preserveInitialPricing && values.subCategory === initialSubCategory.current) return;
     updateCost(values.usdPrice);
   }, [values.subCategory, categories, margin]);
 
@@ -178,7 +185,6 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
 
           <PricingCalculator
             cost={values.usdPrice}
-            margin={margin}
             retailPrice={values.retailPrice}
             onCostChange={updateCost}
             onRetailPriceChange={applyRetail}
@@ -220,23 +226,25 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
             inStock={values.primeDelivery}
             onChange={(v) => setField('primeDelivery', v)}
           />
-          <button
-            type="button"
-            onClick={onGenerateWithAi}
-            disabled={aiLoading}
-            aria-busy={aiLoading}
-            className={`${SECONDARY_BTN_CLASS} inline-flex items-center justify-center gap-1.5 w-full disabled:cursor-not-allowed disabled:opacity-80 ${aiLoading ? 'animate-pulse' : ''}`}
-          >
-            <Icon name="auto_awesome" className={`text-[16px] ${aiLoading ? 'animate-pulse' : ''}`} />
-            {aiLoading ? t('ai_generating') : t('generate_and_translate_with_ai')}
-          </button>
+          {onGenerateWithAi && (
+            <button
+              type="button"
+              onClick={onGenerateWithAi}
+              disabled={aiLoading}
+              aria-busy={aiLoading}
+              className={`${SECONDARY_BTN_CLASS} inline-flex items-center justify-center gap-1.5 w-full disabled:cursor-not-allowed disabled:opacity-80 ${aiLoading ? 'animate-pulse' : ''}`}
+            >
+              <Icon name="auto_awesome" className={`text-[16px] ${aiLoading ? 'animate-pulse' : ''}`} />
+              {aiLoading ? t('ai_generating') : t('generate_and_translate_with_ai')}
+            </button>
+          )}
         </div>
       </div>
 
       <StepFooter
         onBack={onBack}
         onCancel={onCancel}
-        submitLabel={t('next')}
+        submitLabel={submitLabel ?? t('next')}
         submitDisabled={!values.title.trim()}
       />
     </form>

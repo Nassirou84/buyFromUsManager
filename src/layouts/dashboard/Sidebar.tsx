@@ -1,15 +1,19 @@
 import useLocales from '@/locales/use-locales';
 import React from 'react';
-import { Bus, Cloud, GalleryHorizontal, Moon, Package, PanelLeftClose, PanelLeftOpen, Settings, Sun, Tag, Truck, Undo2, UserCog } from "lucide-react";
+import { Bus, CircleHelp, Cloud, ExternalLink, GalleryHorizontal, Package, PanelLeftClose, PanelLeftOpen, Settings, Tag, Truck, Undo2, UserCog, Users } from "lucide-react";
 import Link from 'next/link';
+import { useIsSuperAdmin } from '@/auth/hooks';
+import LanguagePoppever from './language-poppever';
 
 export type NavigationPath =
   | 'catalog-scraping'
   | 'orders-fulfillment'
   | 'returns-rmas'
   | 'delivery-fleet'
+  | 'store-customers'
   | 'promotions-coupons'
   | 'banners-merchandising'
+  | 'faqs'
   | 'users-roles'
   | 'platform-settings';
 
@@ -18,8 +22,10 @@ export const NAV_HREFS: Record<NavigationPath, string> = {
   'orders-fulfillment': '/dashboard/orders-fulfillment',
   'returns-rmas': '/dashboard/returns-rmas',
   'delivery-fleet': '/dashboard/delivery-fleet',
+  'store-customers': '/dashboard/store-customers',
   'promotions-coupons': '/dashboard/promotions-coupons',
   'banners-merchandising': '/dashboard/banners-merchandising',
+  'faqs': '/dashboard/faqs',
   'users-roles': '/dashboard/users-roles',
   'platform-settings': '/dashboard/platform-settings',
 };
@@ -31,7 +37,7 @@ export const pathToNavigationPath = (pathname: string): NavigationPath =>
 
 const NAV_SECTIONS: {
   titleKey: string;
-  items: { key: NavigationPath; labelKey: string; icon: React.ElementType; badge?: string }[];
+  items: { key: NavigationPath; labelKey: string; icon: React.ElementType; badge?: string; superAdminOnly?: boolean }[];
 }[] = [
   {
     titleKey: 'nav_operations',
@@ -40,6 +46,7 @@ const NAV_SECTIONS: {
       { key: 'orders-fulfillment', labelKey: 'nav_orders_fulfillment', icon: Truck, badge: '19' },
       { key: 'returns-rmas', labelKey: 'nav_returns_rmas', icon: Undo2 },
       { key: 'delivery-fleet', labelKey: 'nav_delivery_fleet', icon: Bus },
+      { key: 'store-customers', labelKey: 'nav_store_customers', icon: Users },
     ],
   },
   {
@@ -47,12 +54,13 @@ const NAV_SECTIONS: {
     items: [
       { key: 'promotions-coupons', labelKey: 'nav_promotions_coupons', icon: Tag },
       { key: 'banners-merchandising', labelKey: 'nav_banners_merchandising', icon: GalleryHorizontal },
+      { key: 'faqs', labelKey: 'nav_faqs', icon: CircleHelp },
     ],
   },
   {
     titleKey: 'nav_administration',
     items: [
-      { key: 'users-roles', labelKey: 'nav_users_roles', icon: UserCog },
+      { key: 'users-roles', labelKey: 'nav_users_roles', icon: UserCog, superAdminOnly: true },
       { key: 'platform-settings', labelKey: 'nav_platform_settings', icon: Settings },
     ],
   },
@@ -62,18 +70,15 @@ interface SidebarProps {
   currentPath: NavigationPath;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  isDarkMode: boolean;
-  onToggleDarkMode: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentPath,
   collapsed,
   onToggleCollapse,
-  isDarkMode,
-  onToggleDarkMode,
 }) => {
   const { t } = useLocales();
+  const isSuperAdmin = useIsSuperAdmin();
 
   return (
     <aside
@@ -107,7 +112,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Items */}
         <nav className="p-3 flex flex-col gap-1">
-          {NAV_SECTIONS.map((section, i) => (
+          {NAV_SECTIONS.map((section) => ({
+            ...section,
+            items: section.items.filter((item) => !item.superAdminOnly || isSuperAdmin),
+          })).filter((section) => section.items.length > 0).map((section, i) => (
             <React.Fragment key={section.titleKey}>
               {!collapsed && (
                 <div className={`px-3 ${i === 0 ? 'pt-3' : 'pt-4'} pb-1 text-[11px] uppercase tracking-wider text-[#565e74] dark:text-slate-400 font-bold`}>
@@ -159,17 +167,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Cloud size={16} className="text-[#737686] flex-shrink-0" />
         </div>
 
-        <div className={`flex items-center ${collapsed ? 'flex-col gap-1' : 'justify-between'} px-1 pt-1`}>
-          <button
-            type="button"
-            onClick={onToggleDarkMode}
-            title={isDarkMode ? t('switch_to_light_mode') : t('switch_to_dark_mode')}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[#565e74] dark:text-slate-300 hover:text-[#0b1c30] dark:hover:text-white hover:bg-[#eff4ff] dark:hover:bg-slate-800 rounded text-[12px] font-medium transition-colors cursor-pointer"
+        {/* Header actions, shown here instead of in the header on narrow screens */}
+        <div className={`lg:hidden flex items-center ${collapsed ? 'flex-col gap-1' : 'justify-between'} px-1`}>
+          <Link
+            target="_blank"
+            rel="noopener noreferrer"
+            href={process.env.NEXT_PUBLIC_STORE_FRONT_URL || '#'}
+            title={t('storefront_preview')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[#565e74] dark:text-slate-300 hover:text-[#0b1c30] dark:hover:text-white hover:bg-[#eff4ff] dark:hover:bg-slate-800 rounded text-[12px] font-medium transition-colors"
           >
-            {isDarkMode ? <Sun size={17} className="" /> : <Moon size={17} className="" />}
-            {!collapsed && <span>{isDarkMode ? t('light') : t('dark')}</span>}
-          </button>
+            <ExternalLink size={17} />
+            {!collapsed && <span>{t('storefront_preview')}</span>}
+          </Link>
+          <LanguagePoppever />
+        </div>
 
+        <div className={`flex items-center ${collapsed ? 'flex-col gap-1' : 'justify-between'} px-1 pt-1`}>
           <button
             type="button"
             onClick={onToggleCollapse}

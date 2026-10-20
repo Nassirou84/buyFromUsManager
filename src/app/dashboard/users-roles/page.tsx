@@ -1,6 +1,4 @@
-'use client';
-
-import { UsersRolesView } from '@/sections/dashbord/components/views/OtherViews';
+import { UsersRolesView } from '@/sections/users-roles/UsersRolesView';
 
 export default function Page() {
   return <UsersRolesView />;

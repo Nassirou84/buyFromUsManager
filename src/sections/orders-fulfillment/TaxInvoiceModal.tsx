@@ -1,7 +1,7 @@
 import useLocales from '@/locales/use-locales';
 import React from 'react';
 import { Icon } from '@/components/lucide-icon';
-import { Order } from '../../types';
+import { Order } from './types';
 
 interface TaxInvoiceModalProps {
   order: Order | null;

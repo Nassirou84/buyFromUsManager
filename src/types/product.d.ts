@@ -1,4 +1,3 @@
-import { photo } from './photo';
 import Category, { Subcategory } from './category';
 
 type Variant = {
@@ -8,6 +7,11 @@ type Variant = {
 type ProductDetail = {
   name: string;
   value: string;
+};
+
+type photo = {
+  url: string;
+  isCover?: boolean;
 };
 
 interface Product {
@@ -26,7 +30,7 @@ interface Product {
   photos?: photo[];
   description?: string;
   usdPrice?: number;
-  available?: boolean;
+  isAvailable?: boolean;
   goodForAdd?: boolean;
   status?: string;
   uid?: string | null;
@@ -43,6 +47,7 @@ interface Product {
   actualPrice?: number;
   primeDelivery?: boolean;
   sellerChoice?: boolean;
+  fullPrice?: number;
 }
 
 export { Product, Variant };

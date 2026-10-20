@@ -1,10 +1,11 @@
 import useLocales from '@/locales/use-locales';
 import React, { useState } from 'react';
 import { Icon } from '@/components/lucide-icon';
-import { DropshipProduct } from '../../types';
+import { Product } from '@/types/product';
+import { getCoverPhotoUrl } from '@/utils/cover-photo';
 
 interface EditPriceModalProps {
-  product: DropshipProduct | null;
+  product: Product | null;
   isOpen: boolean;
   onClose: () => void;
   onSave: (id: string, newRetailPrice: number) => void;
@@ -18,16 +19,16 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
 }) => {
   const { t } = useLocales();
 
+  const [retailPrice, setRetailPrice] = useState(product?.fullPrice ?? 0);
+
   if (!isOpen || !product) return null;
 
-  const [retailPrice, setRetailPrice] = useState(product.retailPrice);
-
-  const markup = ((retailPrice - product.sourceCost) / product.sourceCost) * 100;
-  const margin = ((retailPrice - product.sourceCost) / retailPrice) * 100;
+  const markup = ((retailPrice - (product.usdPrice ?? 0)) / (product.usdPrice ?? 1)) * 100;
+  const margin = retailPrice ? ((retailPrice - (product.usdPrice ?? 0)) / retailPrice) * 100 : 0;
 
   const handleSave = () => {
-    onSave(product.id, retailPrice);
-    onClose();
+    if (!product || !product.uid) return;
+    onSave(product.uid, retailPrice);
   };
 
   return (
@@ -36,7 +37,7 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-[#eff4ff] text-[#004ac6] flex items-center justify-center">
-              <Icon name="price_change" className="text-[18px]"/>
+              <Icon name="price_change" className="text-[18px]" />
             </div>
             <div>
               <h3 className="text-base font-bold text-[#0b1c30] dark:text-white">
@@ -52,19 +53,19 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
             onClick={onClose}
             className="p-1 rounded text-slate-400 hover:text-slate-600"
           >
-            <Icon name="close" className="text-[18px]"/>
+            <Icon name="close" className="text-[18px]" />
           </button>
         </div>
 
         <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
           <img
-            src={product.image}
+            src={getCoverPhotoUrl(product) ?? ''}
             alt={product.title}
             className="w-12 h-12 rounded object-cover border border-slate-200"
           />
           <div className="text-xs">
             <div className="font-semibold text-slate-900 dark:text-white">{product.title}</div>
-            <div className="text-slate-500 font-mono">{t('source_cost', { value: product.sourceCost.toFixed(2) })}</div>
+            <div className="text-slate-500 font-mono">{t('source_cost', { value: product.usdPrice?.toFixed(2) })}</div>
           </div>
         </div>
 

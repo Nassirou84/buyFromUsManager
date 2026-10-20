@@ -1,6 +1,6 @@
 'use client';
 
-import { ReturnsView } from '@/sections/dashbord/components/views/ReturnsView';
+import { ReturnsView } from '@/sections/returns-rmas/ReturnsView';
 
 export default function Page() {
   return <ReturnsView />;

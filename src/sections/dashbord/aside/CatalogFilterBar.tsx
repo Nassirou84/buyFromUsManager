@@ -1,8 +1,11 @@
 import useLocales from '@/locales/use-locales';
 import React from 'react';
 import { Icon } from '@/components/lucide-icon';
+import { useGetCategories } from '@/api/categories/get-all-categories';
+import { Input } from '@/components/ui/input';
+import { SelectInput } from '@/components/ui/select-input';
 
-export type FilterTab = 'all' | 'amazon' | 'ebay' | 'alerts' | 'drafts';
+export type FilterTab = 'all' | 'amazon' | 'ebay' | 'alerts' | 'delisted';
 export type ViewMode = 'table' | 'grid';
 
 interface CatalogFilterBarProps {
@@ -21,7 +24,7 @@ interface CatalogFilterBarProps {
     amazon: number;
     ebay: number;
     alerts: number;
-    drafts: number;
+    delisted: number;
   };
 }
 
@@ -39,6 +42,17 @@ export const CatalogFilterBar: React.FC<CatalogFilterBarProps> = ({
   counts,
 }) => {
   const { t } = useLocales();
+  const { data: categories } = useGetCategories();
+
+  const categoryOptions = [
+    { value: 'all', label: t('all_categories_subcategories') },
+    ...(categories ?? []).flatMap((category) =>
+      (category.subcategories ?? []).map((sub) => ({
+        value: sub.title,
+        label: t('subcategory_in_category', { subcategory: sub.title, category: category.title }),
+      }))
+    ),
+  ];
   return (
     <div className="flex flex-col gap-3.5">
       {/* Tab Ribbon + View Mode */}
@@ -47,46 +61,17 @@ export const CatalogFilterBar: React.FC<CatalogFilterBarProps> = ({
           <button
             type="button"
             onClick={() => onTabChange('all')}
-            className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'all'
                 ? 'bg-[#004ac6] text-white shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-[#434655] dark:text-slate-300 hover:bg-[#eff4ff] dark:hover:bg-slate-700 border border-[#e5eeff] dark:border-slate-700'
             }`}
           >
-            {t('all_scraped_products', { total: counts.all.toLocaleString() })}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onTabChange('amazon')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'amazon'
-                ? 'bg-[#004ac6] text-white shadow-xs'
-                : 'bg-white dark:bg-slate-800 text-[#434655] dark:text-slate-300 hover:bg-[#eff4ff] dark:hover:bg-slate-700 border border-[#e5eeff] dark:border-slate-700'
-            }`}
-          >
-            <span>{t('amazon_sync')}</span>
+            <span>{t('all')}</span>
             <span className={`px-1.5 py-0.5 text-[11px] rounded-full font-bold ${
-              activeTab === 'amazon' ? 'bg-blue-400/30 text-white' : 'bg-[#eff4ff] dark:bg-slate-700 text-[#004ac6] dark:text-blue-300'
+              activeTab === 'all' ? 'bg-blue-400/30 text-white' : 'bg-[#eff4ff] dark:bg-slate-700 text-[#004ac6] dark:text-blue-300'
             }`}>
-              {counts.amazon}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onTabChange('ebay')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'ebay'
-                ? 'bg-[#004ac6] text-white shadow-xs'
-                : 'bg-white dark:bg-slate-800 text-[#434655] dark:text-slate-300 hover:bg-[#eff4ff] dark:hover:bg-slate-700 border border-[#e5eeff] dark:border-slate-700'
-            }`}
-          >
-            <span>{t('ebay_sync')}</span>
-            <span className={`px-1.5 py-0.5 text-[11px] rounded-full font-bold ${
-              activeTab === 'ebay' ? 'bg-blue-400/30 text-white' : 'bg-[#eff4ff] dark:bg-slate-700 text-[#004ac6] dark:text-blue-300'
-            }`}>
-              {counts.ebay}
+              {counts.all.toLocaleString()}
             </span>
           </button>
 
@@ -107,14 +92,14 @@ export const CatalogFilterBar: React.FC<CatalogFilterBarProps> = ({
 
           <button
             type="button"
-            onClick={() => onTabChange('drafts')}
+            onClick={() => onTabChange('delisted')}
             className={`px-3.5 py-2 rounded-lg text-[13px] font-semibold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'drafts'
+              activeTab === 'delisted'
                 ? 'bg-[#004ac6] text-white shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-[#434655] dark:text-slate-300 hover:bg-[#eff4ff] dark:hover:bg-slate-700 border border-[#e5eeff] dark:border-slate-700'
             }`}
           >
-            {t('drafts_count', { count: counts.drafts })}
+            {t('delisted_count', { count: counts.delisted })}
           </button>
         </div>
 
@@ -149,49 +134,36 @@ export const CatalogFilterBar: React.FC<CatalogFilterBarProps> = ({
 
       {/* Search and Secondary Filter Dropdowns */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-        {/* Search */}
-        <div className="md:col-span-6 relative">
-          <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737686] text-[18px]"/>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={t('catalog_search_placeholder')}
-            className="w-full h-10.5 pl-9 pr-4 bg-white dark:bg-[#131b2e] border border-[#c3c6d7] dark:border-slate-700 text-[13px] text-[#0b1c30] dark:text-white placeholder:text-[#737686] rounded-lg focus:outline-none focus:border-[#004ac6] focus:ring-1 focus:ring-[#004ac6] shadow-2xs"
-          />
-        </div>
+        <Input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder={t('catalog_search_placeholder')}
+          leftIcon={<Icon name="search" className="text-[18px]" />}
+          containerClassName="md:col-span-6 mb-0"
+        />
 
-        {/* Source Marketplaces */}
-        <div className="md:col-span-3 relative">
-          <Icon name="store" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#565e74] text-[18px] pointer-events-none"/>
-          <select
-            value={selectedMarketplace}
-            onChange={(e) => onMarketplaceChange(e.target.value)}
-            className="w-full h-10.5 pl-9 pr-8 bg-white dark:bg-[#131b2e] border border-[#c3c6d7] dark:border-slate-700 text-[13px] text-[#0b1c30] dark:text-white rounded-lg appearance-none focus:outline-none focus:border-[#004ac6] shadow-2xs cursor-pointer"
-          >
-            <option value="all">{t('all_source_marketplaces')}</option>
-            <option value="amazon">{t('amazon_us_prime')}</option>
-            <option value="ebay">{t('ebay_luxury')}</option>
-            <option value="aliexpress">{t('aliexpress_direct')}</option>
-          </select>
-          <Icon name="expand_more" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#737686] pointer-events-none text-[18px]"/>
-        </div>
+        <SelectInput
+          value={selectedMarketplace}
+          onChange={(e) => onMarketplaceChange(e.target.value)}
+          leftIcon={<Icon name="store" className="text-[18px]" />}
+          containerClassName="md:col-span-3 mb-0"
+          options={[
+            { value: 'all', label: t('all_source_marketplaces') },
+            { value: 'amazon', label: 'Amazon' },
+            { value: 'walmart', label: 'Walmart' },
+            { value: 'bestbuy', label: 'BestBuy' },
+            { value: 'other', label: t('seller_other') },
+          ]}
+        />
 
-        {/* Categories */}
-        <div className="md:col-span-3 relative">
-          <Icon name="category" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#565e74] text-[18px] pointer-events-none"/>
-          <select
-            value={selectedCategory}
-            onChange={(e) => onCategoryChange(e.target.value)}
-            className="w-full h-10.5 pl-9 pr-8 bg-white dark:bg-[#131b2e] border border-[#c3c6d7] dark:border-slate-700 text-[13px] text-[#0b1c30] dark:text-white rounded-lg appearance-none focus:outline-none focus:border-[#004ac6] shadow-2xs cursor-pointer"
-          >
-            <option value="all">{t('all_categories_subcategories')}</option>
-            <option value="Apparel">{t('cat_apparel')}</option>
-            <option value="Leather Goods">{t('cat_leather_goods')}</option>
-            <option value="Jewelry & Acc">{t('cat_jewelry')}</option>
-          </select>
-          <Icon name="expand_more" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#737686] pointer-events-none text-[18px]"/>
-        </div>
+        <SelectInput
+          value={selectedCategory}
+          onChange={(e) => onCategoryChange(e.target.value)}
+          leftIcon={<Icon name="category" className="text-[18px]" />}
+          containerClassName="md:col-span-3 mb-0"
+          options={categoryOptions}
+        />
       </div>
     </div>
   );

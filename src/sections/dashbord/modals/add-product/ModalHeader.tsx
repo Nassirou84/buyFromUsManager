@@ -11,10 +11,12 @@ const STEP_ICONS: Record<Step, string> = {
 
 interface ModalHeaderProps {
   step: Step;
+  title?: string;
+  description?: string;
   onClose: () => void;
 }
 
-export const ModalHeader: React.FC<ModalHeaderProps> = ({ step, onClose }) => {
+export const ModalHeader: React.FC<ModalHeaderProps> = ({ step, title, description, onClose }) => {
   const { t } = useLocales();
 
   return (
@@ -25,10 +27,10 @@ export const ModalHeader: React.FC<ModalHeaderProps> = ({ step, onClose }) => {
         </div>
         <div>
           <h3 className="text-xl font-bold text-[#0b1c30] dark:text-white tracking-tight">
-            {t('add_product_to_catalog')}
+            {title ?? t('add_product_to_catalog')}
           </h3>
           <p className="text-[12.5px] text-[#565e74] dark:text-slate-400 mt-0.5">
-            {t('add_product_process_note')}
+            {description ?? t('add_product_process_note')}
           </p>
         </div>
       </div>

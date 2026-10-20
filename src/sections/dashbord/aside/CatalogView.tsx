@@ -1,5 +1,6 @@
 import useLocales from '@/locales/use-locales';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useDebounce } from 'use-debounce';
 import { DropshipProduct, ScraperChannelStats, MarkupRule } from '../types';
 import { ScraperTicker } from './ScraperTicker';
 import { CatalogHeader, AddProductMode } from './CatalogHeader';
@@ -9,37 +10,44 @@ import { BulkActionsBar } from './BulkActionsBar';
 import { ProductTable } from './ProductTable';
 import { ProductGrid } from './ProductGrid';
 import { ScraperThroughputCards } from './ScraperThroughputCards';
-import { PricingMarkupCard } from './PricingMarkupCard';
 import { AddProductModal } from '../modals/add-product';
 import { SyncScrapersModal } from '../modals/SyncScrapersModal';
 import { ManageCategoriesModal } from '../modals/ManageCategoriesModal';
-import { ConfigureMarkupModal } from '../modals/ConfigureMarkupModal';
 import { ManageProxiesModal } from '../modals/ManageProxiesModal';
+import { EditProductModal } from '../modals/edit-product';
 import { EditPriceModal } from '../modals/EditPriceModal';
-import { useGetProductSummary } from '@/api/product/get-summary';
+import { PriceUpdatedModal } from '../modals/PriceUpdatedModal';
+import { ApplyMarginModal } from '../modals/ApplyMarginModal';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { useGetProductSummary, GET_SUMMARY_QUERY_KEY } from '@/api/product/get-summary';
+import useGetAllProducts, { GetAllProductsFilters } from '@/api/product/get-all-products';
+import useUpdatePrice, { updatePrice as updatePriceRequest } from '@/api/product/update-price';
+import { useBulkRelistToStore } from '@/api/product/bulk-relist-to-store';
+import { Product } from '@/types/product';
 
 interface CatalogViewProps {
-  products: DropshipProduct[];
   channels: ScraperChannelStats[];
   markupRules: MarkupRule[];
-  onUpdateProducts: (updated: DropshipProduct[]) => void;
   onUpdateRules: (updated: MarkupRule[]) => void;
   globalSearch: string;
 }
 
 export const CatalogView: React.FC<CatalogViewProps> = ({
-  products,
   channels,
   markupRules,
-  onUpdateProducts,
   onUpdateRules,
-  globalSearch,
 }) => {
   const { t } = useLocales();
 
-  const { data: summary } = useGetProductSummary();
+  const ITEMS_PER_PAGE = 9;
 
-  const [selectedIds, setSelectedIds] = useState<string[]>(['prod-1', 'prod-2']);
+  const { data: summary } = useGetProductSummary();
+  const queryClient = useQueryClient();
+  const { mutate: updatePrice } = useUpdatePrice();
+  const { mutate: relistToStore } = useBulkRelistToStore();
+
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [localSearch, setLocalSearch] = useState('');
@@ -54,53 +62,56 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [isConfigureMarkupOpen, setIsConfigureMarkupOpen] = useState(false);
   const [isProxiesModalOpen, setIsProxiesModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<DropshipProduct | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+  const [isMarginModalOpen, setIsMarginModalOpen] = useState(false);
+  const [isApplyingMargin, setIsApplyingMargin] = useState(false);
+  const [priceUpdated, setPriceUpdated] = useState<{ title?: string; price: number } | null>(null);
+
+  // Only hit the API once the user pauses typing; a new search starts from page 1
+  const [debouncedSearch] = useDebounce(localSearch, 500);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch]);
+
+  const tabFilters = useMemo<GetAllProductsFilters>(() => {
+    switch (activeTab) {
+      case 'amazon':
+        return { seller: 'amazon' };
+      case 'ebay':
+        return { seller: 'ebay' };
+      case 'delisted':
+        return { isAvailable: false };
+      case 'alerts':
+        return { updatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() };
+      default:
+        return {};
+    }
+  }, [activeTab]);
+
+  const { data: allProducts, isLoading } = useGetAllProducts(currentPage, {
+    keyword: debouncedSearch,
+    subCategory: selectedCategory === 'all' ? undefined : selectedCategory,
+    category: undefined,
+    seller: selectedMarketplace === 'all' ? undefined : selectedMarketplace,
+    ...tabFilters,
+    order: '[createdAt]=desc'
+  });
+
+  // Selection only makes sense for the current filter set; drop it when filters change
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [debouncedSearch, activeTab, selectedMarketplace, selectedCategory]);
 
   // Counts for tabs
-  const counts = useMemo(() => {
-    return {
-      all: 1482,
-      amazon: 840,
-      ebay: 420,
-      alerts: 14,
-      drafts: 23,
-    };
-  }, []);
-
-  // Filter products
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      // Global search or local search
-      const q = (globalSearch || localSearch).trim().toLowerCase();
-      if (q) {
-        const matchTitle = p.title.toLowerCase().includes(q);
-        const matchSku = p.sku.toLowerCase().includes(q);
-        const matchAsin = p.sourceId.toLowerCase().includes(q);
-        const matchSupplier = p.supplierInfo.toLowerCase().includes(q);
-        const matchSubtitle = p.scrapedSubtitle.toLowerCase().includes(q);
-        if (!matchTitle && !matchSku && !matchAsin && !matchSupplier && !matchSubtitle) {
-          return false;
-        }
-      }
-
-      // Tab filter
-      if (activeTab === 'amazon' && p.sourceMarketplace !== 'amazon') return false;
-      if (activeTab === 'ebay' && p.sourceMarketplace !== 'ebay') return false;
-      if (activeTab === 'alerts' && p.syncStatus !== 'price_shifted' && p.inStock) return false;
-
-      // Dropdown Marketplace
-      if (selectedMarketplace !== 'all' && p.sourceMarketplace !== selectedMarketplace) {
-        return false;
-      }
-
-      // Dropdown Category
-      if (selectedCategory !== 'all' && p.category !== selectedCategory) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [products, globalSearch, localSearch, activeTab, selectedMarketplace, selectedCategory]);
+  const counts = useMemo(() => ({
+    all: (summary?.product?.count ?? 0) - (summary?.product?.other ?? 0),
+    amazon: summary?.product?.amazon ?? 0,
+    ebay: summary?.product?.ebay ?? 0,
+    alerts: summary?.product?.recently_updated ?? 0,
+    delisted: summary?.product?.unavailable ?? 0,
+  }), [summary]);
 
   // Selection handlers
   const handleToggleSelect = (id: string) => {
@@ -110,87 +121,114 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   };
 
   const handleSelectAll = () => {
-    if (selectedIds.length === filteredProducts.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(filteredProducts.map((p) => p.id));
-    }
+    const pageIds = (allProducts?.products ?? []).map((p) => p.uid ?? String(p.id));
+    const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+    setSelectedIds((prev) =>
+      allPageSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : Array.from(new Set([...prev, ...pageIds]))
+    );
   };
 
   const handleClearSelection = () => {
     setSelectedIds([]);
   };
 
+  const handleUpdatePrice = (uid: string, newPrice: number) => {
+    updatePrice({ uid, newPrice }, {
+      onSuccess: () => {
+        queryClient.setQueriesData<{ products: Product[]; totalItems: number }>(
+          { queryKey: ['GET_ALL_PRODUCTS'] },
+          (old) => old && {
+            ...old,
+            products: old.products.map((p) => (p.uid === uid ? { ...p, fullPrice: newPrice } : p)),
+          }
+        );
+        setPriceUpdated({ title: editingProduct?.title, price: newPrice });
+        setEditingProduct(null);
+      },
+      onError: () => {
+        toast.error(t('price_update_failed'));
+      },
+    });
+  };
+
   // Bulk actions
   const handleForceRescrape = () => {
-    const updated = products.map((p) => {
-      if (selectedIds.includes(p.id)) {
-        return {
-          ...p,
-          lastSyncTime: t('just_now'),
-          syncStatus: 'synced' as const,
-        };
-      }
-      return p;
-    });
-    onUpdateProducts(updated);
-    alert(t('force_rescrape_alert', { count: selectedIds.length }));
+    console.log('force rescrape', selectedIds);
   };
 
-  const handleApplyMarkup = () => {
-    const updated = products.map((p) => {
-      if (selectedIds.includes(p.id)) {
-        const newMarkup = p.markupPercent + 40;
-        const newRetail = Math.round(p.sourceCost * (1 + newMarkup / 100));
-        const newMargin = ((newRetail - p.sourceCost) / newRetail) * 100;
-        return {
-          ...p,
-          retailPrice: newRetail,
-          markupPercent: Math.round(newMarkup * 10) / 10,
-          marginPercent: Math.round(newMargin * 10) / 10,
-        };
-      }
-      return p;
-    });
-    onUpdateProducts(updated);
-  };
+  const handleApplyMargin = async (marginPercent: number) => {
+    const targets = (allProducts?.products ?? []).filter(
+      (p) => p.uid && selectedIds.includes(p.uid) && p.usdPrice
+    );
+    if (targets.length === 0) return;
 
-  const handleChangeCategory = () => {
-    const newCat = prompt(t('enter_new_category_name'), t('outerwear'));
-    if (newCat) {
-      const updated = products.map((p) =>
-        selectedIds.includes(p.id) ? { ...p, subCategory: newCat } : p
+    setIsApplyingMargin(true);
+    const results = await Promise.allSettled(
+      targets.map((p) => {
+        const newPrice = Math.round((p.usdPrice! * (1 + marginPercent / 100)) * 100) / 100;
+        return updatePriceRequest(p.uid!, newPrice).then(() => ({ uid: p.uid!, newPrice }));
+      })
+    );
+    setIsApplyingMargin(false);
+
+    const updated = new Map<string, number>();
+    results.forEach((r) => {
+      if (r.status === 'fulfilled') updated.set(r.value.uid, r.value.newPrice);
+    });
+
+    if (updated.size > 0) {
+      queryClient.setQueriesData<{ products: Product[]; totalItems: number }>(
+        { queryKey: ['GET_ALL_PRODUCTS'] },
+        (old) => old && {
+          ...old,
+          products: old.products.map((p) =>
+            p.uid && updated.has(p.uid) ? { ...p, fullPrice: updated.get(p.uid) } : p
+          ),
+        }
       );
-      onUpdateProducts(updated);
+      toast.success(t('margin_applied', { count: updated.size }));
     }
+    if (updated.size < targets.length) toast.error(t('margin_apply_failed'));
+
+    setIsMarginModalOpen(false);
   };
 
   const handleDelist = () => {
-    const updated = products.map((p) =>
-      selectedIds.includes(p.id) ? { ...p, isDelisted: true, inStock: false, statusLabel: t('delisted_from_storefront') } : p
-    );
-    onUpdateProducts(updated);
+    console.log('delist', selectedIds);
   };
 
-  const handleAddNewProduct = (newProd: DropshipProduct) => {
-    onUpdateProducts([newProd, ...products]);
-  };
+  const handleRelist = () => {
+    const uids = selectedIds;
+    if (uids.length === 0) return;
 
-  const handleSavePriceEdit = (id: string, newRetailPrice: number) => {
-    const updated = products.map((p) => {
-      if (p.id === id) {
-        const markup = ((newRetailPrice - p.sourceCost) / p.sourceCost) * 100;
-        const margin = ((newRetailPrice - p.sourceCost) / newRetailPrice) * 100;
-        return {
-          ...p,
-          retailPrice: newRetailPrice,
-          markupPercent: Math.round(markup * 10) / 10,
-          marginPercent: Math.round(margin * 10) / 10,
-        };
-      }
-      return p;
+    relistToStore(uids, {
+      onSuccess: () => {
+        // Reflect the change in the cached listing without waiting for a refetch
+        queryClient.setQueriesData<{ products: Product[]; totalItems: number }>(
+          { queryKey: ['GET_ALL_PRODUCTS'] },
+          (old) => old && {
+            ...old,
+            products: old.products.map((p) =>
+              p.uid && uids.includes(p.uid) ? { ...p, isAvailable: true } : p
+            ),
+          }
+        );
+        queryClient.invalidateQueries({ queryKey: ['GET_ALL_PRODUCTS'] });
+        queryClient.invalidateQueries({ queryKey: GET_SUMMARY_QUERY_KEY });
+        setSelectedIds([]);
+        toast.success(t('relist_success', { count: uids.length }));
+      },
+      onError: () => {
+        toast.error(t('relist_failed'));
+      },
     });
-    onUpdateProducts(updated);
+  };
+
+  const handleEditProduct = () => {
+    const product = allProducts?.products.find((p) => (p.uid ?? String(p.id)) === selectedIds[0]);
+    if (product) setProductToEdit(product);
   };
 
   return (
@@ -234,15 +272,24 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
       {/* 4. Filter Ribbon and Secondary Search */}
       <CatalogFilterBar
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          setCurrentPage(1);
+        }}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         searchQuery={localSearch}
         onSearchChange={setLocalSearch}
         selectedMarketplace={selectedMarketplace}
-        onMarketplaceChange={setSelectedMarketplace}
+        onMarketplaceChange={(m) => {
+          setSelectedMarketplace(m);
+          setCurrentPage(1);
+        }}
         selectedCategory={selectedCategory}
-        onCategoryChange={setSelectedCategory}
+        onCategoryChange={(c) => {
+          setSelectedCategory(c);
+          setCurrentPage(1);
+        }}
         counts={counts}
       />
 
@@ -251,92 +298,74 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
         selectedCount={selectedIds.length}
         onClearSelection={handleClearSelection}
         onForceRescrape={handleForceRescrape}
-        onApplyMarkup={handleApplyMarkup}
-        onChangeCategory={handleChangeCategory}
+        onApplyMargin={() => setIsMarginModalOpen(true)}
         onDelist={handleDelist}
+        onRelist={handleRelist}
+        onEditProduct={handleEditProduct}
       />
 
       {/* 6. Products Table or Grid */}
       {viewMode === 'table' ? (
         <ProductTable
-          products={filteredProducts}
+          products={allProducts?.products || []}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
           onSelectAll={handleSelectAll}
           onQuickEditPrice={(prod) => setEditingProduct(prod)}
           onRescrapeProduct={(prod) => {
-            const updated = products.map((p) =>
-              p.id === prod.id ? { ...p, lastSyncTime: t('just_now') } : p
-            );
-            onUpdateProducts(updated);
-            alert(t('listing_scraped_alert', { sku: prod.sku }));
+            // Force rescrape logic here
           }}
           currentPage={currentPage}
-          totalPages={149}
+          totalPages={Math.ceil((allProducts?.totalItems || 0) / ITEMS_PER_PAGE)}
           onPageChange={setCurrentPage}
-          totalCount={counts.all}
+          totalCount={allProducts?.totalItems || 0}
+          itemsPerPage={ITEMS_PER_PAGE}
+          isLoading={isLoading}
         />
       ) : (
         <ProductGrid
-          products={filteredProducts}
+          products={allProducts?.products || []}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
+          isLoading={isLoading}
+          skeletonCount={ITEMS_PER_PAGE}
           onQuickEditPrice={(prod) => setEditingProduct(prod)}
           onRescrapeProduct={(prod) => {
-            const updated = products.map((p) =>
-              p.id === prod.id ? { ...p, lastSyncTime: t('just_now') } : p
-            );
-            onUpdateProducts(updated);
           }}
         />
       )}
 
       {/* 7. Bottom Cards: Scraper Throughput & Pricing Markup Logic */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mt-1">
-        <div className="lg:col-span-8">
-          <ScraperThroughputCards
-            channels={channels}
-            onManageProxies={() => setIsProxiesModalOpen(true)}
-          />
-        </div>
-        <div className="lg:col-span-4">
-          <PricingMarkupCard
-            rules={markupRules}
-            onConfigureRules={() => setIsConfigureMarkupOpen(true)}
-          />
-        </div>
+
+      <div className="">
+        <ScraperThroughputCards
+          channels={channels}
+          onManageProxies={() => setIsProxiesModalOpen(true)}
+        />
       </div>
 
       {/* Modals */}
       <AddProductModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAddProduct={handleAddNewProduct}
         initialMode={addModalMode}
       />
 
-      <SyncScrapersModal
+      {/* <SyncScrapersModal
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
         onSyncComplete={() => {
-          const refreshed = products.map((p) => ({
+          const refreshed = allProducts?.products.map((p) => ({
             ...p,
             lastSyncTime: t('just_now'),
           }));
           onUpdateProducts(refreshed);
         }}
-      />
+      /> */}
 
       <ManageCategoriesModal
         isOpen={isCategoriesModalOpen}
         onClose={() => setIsCategoriesModalOpen(false)}
-      />
-
-      <ConfigureMarkupModal
-        isOpen={isConfigureMarkupOpen}
-        onClose={() => setIsConfigureMarkupOpen(false)}
-        rules={markupRules}
-        onSaveRules={onUpdateRules}
       />
 
       <ManageProxiesModal
@@ -345,10 +374,34 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
       />
 
       <EditPriceModal
+        key={editingProduct?.id}
         product={editingProduct}
         isOpen={!!editingProduct}
         onClose={() => setEditingProduct(null)}
-        onSave={handleSavePriceEdit}
+        onSave={handleUpdatePrice}
+      />
+
+      <ApplyMarginModal
+        isOpen={isMarginModalOpen}
+        selectedCount={selectedIds.length}
+        isLoading={isApplyingMargin}
+        onClose={() => setIsMarginModalOpen(false)}
+        onApply={handleApplyMargin}
+      />
+
+      {productToEdit && (
+        <EditProductModal
+          key={productToEdit.id}
+          product={productToEdit}
+          onClose={() => setProductToEdit(null)}
+        />
+      )}
+
+      <PriceUpdatedModal
+        isOpen={!!priceUpdated}
+        onClose={() => setPriceUpdated(null)}
+        productTitle={priceUpdated?.title}
+        newPrice={priceUpdated?.price}
       />
     </div>
   );

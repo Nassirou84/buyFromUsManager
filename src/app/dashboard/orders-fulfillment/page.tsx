@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { OrdersView } from '@/sections/dashbord/components/orders/OrdersView';
-import { TaxInvoiceModal } from '@/sections/dashbord/modals/TaxInvoiceModal';
-import { INITIAL_ORDERS } from '@/sections/dashbord/data/mockData';
-import { Order } from '@/sections/dashbord/types';
+import { OrdersView } from '@/sections/orders-fulfillment/OrdersView';
+import { TaxInvoiceModal } from '@/sections/orders-fulfillment/TaxInvoiceModal';
+import { INITIAL_ORDERS } from '@/sections/orders-fulfillment/mockData';
+import { Order } from '@/sections/orders-fulfillment/types';
 
 export default function Page() {
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);

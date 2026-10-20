@@ -1,6 +1,6 @@
 'use client';
 
-import { SettingsView } from '@/sections/dashbord/components/views/OtherViews';
+import { SettingsView } from '@/sections/platform-settings/SettingsView';
 
 export default function Page() {
   return <SettingsView />;

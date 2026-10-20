@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Check, ChevronDown, ChevronRight, ExternalLink, KeyRound, LogOut, Moon, Search, Store, Sun, User } from "lucide-react";
+import { Bell, Check, ChevronDown, ChevronRight, ExternalLink, KeyRound, LogOut, Search, Store, User, X } from "lucide-react";
 import { NavigationPath } from './Sidebar';
 import { EditPasswordModal } from '@/sections/dashbord/modals/EditPasswordModal';
 import { useAuthContext } from '@/auth/hooks';
@@ -13,8 +13,6 @@ interface HeaderProps {
   collapsed: boolean;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  isDarkMode: boolean;
-  onToggleDarkMode: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,14 +20,13 @@ export const Header: React.FC<HeaderProps> = ({
   collapsed,
   searchQuery,
   onSearchChange,
-  isDarkMode,
-  onToggleDarkMode,
 }) => {
 
   const { t } = useLocales();
   const { user, logout } = useAuthContext();
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
 
+  const [searchOpen, setSearchOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -89,10 +86,14 @@ export const Header: React.FC<HeaderProps> = ({
         return t('breadcrumb_returns_rmas');
       case 'delivery-fleet':
         return t('breadcrumb_delivery_fleet');
+      case 'store-customers':
+        return t('breadcrumb_store_customers');
       case 'promotions-coupons':
         return t('breadcrumb_promotions_coupons');
       case 'banners-merchandising':
         return t('breadcrumb_banners_merchandising');
+      case 'faqs':
+        return t('breadcrumb_faqs');
       case 'users-roles':
         return t('breadcrumb_users_roles');
       case 'platform-settings':
@@ -122,19 +123,20 @@ export const Header: React.FC<HeaderProps> = ({
     <>
       <header
         className={`fixed top-0 right-0 ${collapsed ? 'left-20' : 'left-72'
-          } h-16 bg-white/85 dark:bg-[#131b2e]/90 backdrop-blur-xl border-b border-[#e5eeff] dark:border-slate-800 shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-6 transition-all duration-300`}
+          } h-16 bg-white/85 dark:bg-[#131b2e]/90 backdrop-blur-xl border-b border-[#e5eeff] dark:border-slate-800 shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 grid grid-cols-[1fr_auto] min-[900px]:grid-cols-[1fr_minmax(0,20rem)_1fr] items-center gap-4 px-6 transition-all duration-300`}
       >
-        {/* Left: Breadcrumbs & Universal Search */}
-        <div className="flex items-center gap-4 flex-1 max-w-xl">
+        {/* Left: Breadcrumbs */}
+        <div className="flex items-center min-w-0">
           <div className="flex items-center gap-1.5 text-[#565e74] dark:text-slate-400 text-[13px] whitespace-nowrap">
             <Store size={18} />
             <span className="font-medium text-[#434655] dark:text-slate-300">{t('flot_admin')}</span>
             <ChevronRight size={14} />
             <span className="text-[#0b1c30] dark:text-white font-semibold">{getBreadcrumbTitle()}</span>
           </div>
+        </div>
 
-          {/* Global Search Bar */}
-          <div className="relative w-full max-w-md hidden sm:block">
+        {/* Center: Global Search Bar */}
+        <div className="relative w-full hidden min-[900px]:block">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737686]" />
             <input
               type="text"
@@ -146,34 +148,35 @@ export const Header: React.FC<HeaderProps> = ({
             <kbd className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 bg-[#dce9ff] dark:bg-slate-700 text-[#004ac6] dark:text-blue-300 text-[10px] font-semibold rounded">
               ⌘K
             </kbd>
-          </div>
         </div>
 
         {/* Right: Actions, Notifications & Profile */}
-        <div className="flex items-center gap-3 sm:gap-4">
+        <div className="flex items-center justify-self-end gap-3 sm:gap-4">
+          {/* Search icon, replaces the search bar below 900px */}
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            aria-label={t('global_search_placeholder')}
+            title={t('global_search_placeholder')}
+            className="min-[900px]:hidden p-2 rounded-lg text-[#565e74] dark:text-slate-300 hover:bg-[#eff4ff] dark:hover:bg-slate-800 hover:text-[#0b1c30] dark:hover:text-white transition-colors cursor-pointer"
+          >
+            <Search size={20} />
+          </button>
+
           {/* Storefront Preview button */}
           <Link
             type="button"
             target="_blank" rel="noopener noreferrer"
-            href={process.env.NEXT_PUBLIC_STORE_FRONT_URL}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#eff4ff] hover:bg-[#dce9ff] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#004ac6] dark:text-blue-300 hover:text-[#003ea8] text-[13px] font-semibold rounded-lg transition-all border border-[#004ac6]/10 cursor-pointer"
+            href={process.env.NEXT_PUBLIC_STORE_FRONT_URL || '#'}
+            className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-[#eff4ff] hover:bg-[#dce9ff] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#004ac6] dark:text-blue-300 hover:text-[#003ea8] text-[13px] font-semibold rounded-lg transition-all border border-[#004ac6]/10 cursor-pointer"
           >
             <ExternalLink size={18} />
-            <span className="hidden sm:inline">{t('storefront_preview')}</span>
+            <span>{t('storefront_preview')}</span>
           </Link>
 
-          {/* Theme Mode Toggle Button */}
-          <button
-            type="button"
-            onClick={onToggleDarkMode}
-            aria-label={isDarkMode ? t('switch_to_light_mode') : t('switch_to_dark_mode')}
-            title={isDarkMode ? t('switch_to_light_mode') : t('switch_to_dark_mode')}
-            className="p-2 rounded-lg text-[#565e74] dark:text-slate-300 hover:bg-[#eff4ff] dark:hover:bg-slate-800 hover:text-[#0b1c30] dark:hover:text-white transition-colors cursor-pointer"
-          >
-            {isDarkMode ? <Sun size={20} className="" /> : <Moon size={20} className="" />}
-          </button>
-
-          <LanguagePoppever />
+          <div className="hidden lg:block">
+            <LanguagePoppever />
+          </div>
 
           {/* Notification Bell */}
           <div className="relative">
@@ -326,11 +329,39 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
         </div>
+
+        {/* Expanded search, covers the header below 900px */}
+        {searchOpen && (
+          <div className="min-[900px]:hidden absolute inset-0 z-10 flex items-center gap-2 px-6 bg-white dark:bg-[#131b2e] animate-in fade-in duration-150">
+            <div className="relative flex-1">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737686]" />
+              <input
+                type="text"
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setSearchOpen(false)}
+                placeholder={t('global_search_placeholder')}
+                className="w-full h-9 pl-9 pr-3 bg-[#eff4ff] dark:bg-slate-800/80 text-[13px] text-[#0b1c30] dark:text-white placeholder:text-[#737686] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#004ac6] focus:bg-white dark:focus:bg-slate-800 transition-all border border-transparent focus:border-[#004ac6]/30"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setSearchOpen(false)}
+              aria-label={t('cancel')}
+              title={t('cancel')}
+              className="p-2 rounded-lg text-[#565e74] dark:text-slate-300 hover:bg-[#eff4ff] dark:hover:bg-slate-800 hover:text-[#0b1c30] dark:hover:text-white transition-colors cursor-pointer"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Password Edit Modal */}
       <EditPasswordModal
         isOpen={isPasswordModalOpen}
+        user={user ?? undefined}
         onClose={() => setIsPasswordModalOpen(false)}
         onPasswordChanged={() => {
           setPasswordToast(true);

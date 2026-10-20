@@ -4,9 +4,10 @@ import { STEP_ORDER, Step } from './constants';
 
 interface StepperProps {
   step: Step;
+  steps?: Step[];
 }
 
-export const Stepper: React.FC<StepperProps> = ({ step }) => {
+export const Stepper: React.FC<StepperProps> = ({ step, steps = STEP_ORDER }) => {
   const { t } = useLocales();
 
   const labels: Record<Step, string> = {
@@ -14,11 +15,11 @@ export const Stepper: React.FC<StepperProps> = ({ step }) => {
     review: t('step_review'),
     extras: t('step_details_variants'),
   };
-  const stepIndex = STEP_ORDER.indexOf(step);
+  const stepIndex = steps.indexOf(step);
 
   return (
-    <ol className="grid grid-cols-3 gap-2">
-      {STEP_ORDER.map((key, idx) => {
+    <ol className={`grid gap-2 ${steps.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+      {steps.map((key, idx) => {
         const isActive = key === step;
         const isDone = idx < stepIndex;
         return (

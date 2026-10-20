@@ -60,8 +60,8 @@ const INITIAL_VALUES: ProductFormValues = {
 };
 
 // Shared form state for the review and extras steps; each step edits it through `setField`.
-export function useProductForm() {
-  const [values, setValues] = useState<ProductFormValues>(INITIAL_VALUES);
+export function useProductForm(initialValues?: Partial<ProductFormValues>) {
+  const [values, setValues] = useState<ProductFormValues>({ ...INITIAL_VALUES, ...initialValues });
 
   const setField = <K extends keyof ProductFormValues>(
     key: K,

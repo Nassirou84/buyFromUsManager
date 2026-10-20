@@ -3,7 +3,7 @@ import useLocales from '@/locales/use-locales';
 import { PRIMARY_BTN_CLASS, SECONDARY_BTN_CLASS } from './constants';
 
 interface StepFooterProps {
-  onBack: () => void;
+  onBack?: () => void;
   onCancel: () => void;
   submitLabel: string;
   submitDisabled?: boolean;
@@ -15,9 +15,13 @@ export const StepFooter: React.FC<StepFooterProps> = ({ onBack, onCancel, submit
 
   return (
     <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#f0f4ff] dark:border-slate-800">
-      <button type="button" onClick={onBack} className={SECONDARY_BTN_CLASS}>
-        {t('back')}
-      </button>
+      {onBack ? (
+        <button type="button" onClick={onBack} className={SECONDARY_BTN_CLASS}>
+          {t('back')}
+        </button>
+      ) : (
+        <span />
+      )}
       <div className="flex items-center gap-2">
         <button type="button" onClick={onCancel} className={SECONDARY_BTN_CLASS}>
           {t('cancel')}
