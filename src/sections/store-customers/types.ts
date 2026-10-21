@@ -5,6 +5,7 @@ export interface CustomerOrderItem {
   variant: string;
   quantity: number;
   price: number;
+  /** Empty when the backend does not expose a photo for the item. */
   image: string;
   warranty?: string;
   batteryHealth?: string;
@@ -13,6 +14,8 @@ export interface CustomerOrderItem {
 export interface CustomerOrder {
   id: string;
   orderNumber: string;
+  /** ISO timestamp, used to group recent orders. Absent on mock data. */
+  createdAt?: string;
   date: string;
   time: string;
   store: string;
@@ -37,6 +40,8 @@ export interface Customer {
     address: string;
   };
   ordersCount: number;
+  /** Orders placed in the last 7 days. Absent on mock data. */
+  lastSevenDaysOrdersCount?: number;
   lastActivity: string;
   ltv: number;
   lastOrderAmount: number;

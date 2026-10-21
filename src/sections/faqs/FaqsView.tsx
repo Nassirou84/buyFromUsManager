@@ -4,13 +4,17 @@ import { toast } from 'sonner';
 import { Icon } from '@/components/lucide-icon';
 import { FaqBlockElement, FaqCategory, FaqElementType, FaqItem } from './types';
 import { JsonExportModal } from './JsonExportModal';
+import { CategoryFormValues, CategoryModal } from './CategoryModal';
+import { ACCORDION_OPTIONS, TARGET_PAGES } from './constants';
 
 interface FaqsViewProps {
   categories: FaqCategory[];
   onUpdateCategories: (categories: FaqCategory[]) => void;
+  /** Saves the categories and resolves with the stored ones, whose ids come from the server. */
+  onPublish: (categories: FaqCategory[]) => Promise<FaqCategory[]>;
+  /** Creates (no id) or updates a category right away and resolves with the stored one. */
+  onSaveCategory: (values: CategoryFormValues, id?: string) => Promise<FaqCategory>;
 }
-
-type AccordionBehavior = FaqCategory['accordionBehavior'];
 
 const BLOCK_TYPES: { type: FaqElementType; icon: string; addKey: string; labelKey: string }[] = [
   { type: 'title', icon: 'title', addKey: 'faqs_add_title', labelKey: 'faqs_el_title' },
@@ -18,18 +22,6 @@ const BLOCK_TYPES: { type: FaqElementType; icon: string; addKey: string; labelKe
   { type: 'list', icon: 'format_list_bulleted', addKey: 'faqs_add_list', labelKey: 'faqs_el_list' },
   { type: 'image', icon: 'image', addKey: 'faqs_add_image', labelKey: 'faqs_el_image' },
   { type: 'video', icon: 'smart_display', addKey: 'faqs_add_video', labelKey: 'faqs_el_video' },
-];
-
-const ACCORDION_OPTIONS: { value: AccordionBehavior; labelKey: string }[] = [
-  { value: 'multi-open', labelKey: 'faqs_accordion_multi' },
-  { value: 'strict', labelKey: 'faqs_accordion_strict' },
-  { value: 'expanded', labelKey: 'faqs_accordion_expanded' },
-];
-
-const TARGET_PAGES: { key: string; labelKey: string }[] = [
-  { key: 'all_pages', labelKey: 'faqs_target_global' },
-  { key: 'checkout', labelKey: 'faqs_target_checkout' },
-  { key: 'pdp', labelKey: 'faqs_target_pdp' },
 ];
 
 const CARD = 'bg-white dark:bg-[#131b2e] rounded-xl border border-[#e5eeff] dark:border-slate-800 shadow-2xs';
@@ -40,11 +32,13 @@ const BLOCK_INPUT = 'bg-white dark:bg-[#131b2e] rounded-lg text-[#0b1c30] dark:t
 const ICON_BTN = 'p-1.5 rounded text-[#565e74] dark:text-slate-400 hover:bg-[#e5eeff] dark:hover:bg-slate-700 transition-colors';
 const TOOLBAR_BTN = 'flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-[#131b2e] hover:bg-[#2563eb] hover:text-white text-[#0b1c30] dark:text-white rounded-lg shadow-2xs text-[11px] font-medium transition-all';
 
-export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategories }) => {
+export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategories, onPublish, onSaveCategory }) => {
   const { t } = useLocales();
   const [selectedCatId, setSelectedCatId] = useState<string>(categories[0]?.id || '');
   const [selectedFaqId, setSelectedFaqId] = useState<string>(categories[0]?.items[0]?.id || '');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [categoryModal, setCategoryModal] = useState<'create' | 'edit' | null>(null);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [newTagInput, setNewTagInput] = useState('');
   const [deployedNow, setDeployedNow] = useState(false);
@@ -54,12 +48,8 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
 
   const totalFaqs = categories.reduce((sum, c) => sum + (c.items.length || c.faqsCount), 0);
 
-  const updateCategoryProp = <K extends keyof FaqCategory>(key: K, value: FaqCategory[K]) => {
-    onUpdateCategories(categories.map((cat) => (cat.id === currentCategory.id ? { ...cat, [key]: value } : cat)));
-  };
-
   const updateActiveFaq = (updater: (prev: FaqItem) => FaqItem) => {
-    if (!activeFaq) return;
+    if (!activeFaq || !currentCategory) return;
     const updatedFaq = updater(activeFaq);
     onUpdateCategories(
       categories.map((cat) =>
@@ -119,14 +109,27 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
     toast.info(t('faqs_toast_block_deleted'));
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     setIsPublishing(true);
     toast.info(t('faqs_toast_syncing'));
-    setTimeout(() => {
-      setIsPublishing(false);
+    try {
+      const saved = await onPublish(categories);
+      // Rows created in this session get their real ids on save, so keep the selection on the same row.
+      const catIndex = categories.findIndex((c) => c.id === currentCategory?.id);
+      const faqIndex = currentCategory?.items.findIndex((f) => f.id === activeFaq?.id) ?? -1;
+      const savedCategory = saved[catIndex];
+      if (savedCategory) {
+        setSelectedCatId(savedCategory.id);
+        setSelectedFaqId(savedCategory.items[faqIndex]?.id ?? savedCategory.items[0]?.id ?? '');
+      }
       setDeployedNow(true);
       toast.success(t('faqs_toast_deployed'));
-    }, 1200);
+    } catch (error) {
+      const details = (error as { details?: string[] })?.details;
+      toast.error(t('faqs_toast_publish_failed'), { description: details?.[0] });
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const handleAddNewFaq = () => {
@@ -152,27 +155,38 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
     toast.success(t('faqs_toast_question_created'));
   };
 
-  const handleAddCategory = () => {
-    const title = window.prompt(t('faqs_category_prompt'));
-    if (!title) return;
-    const newCat: FaqCategory = {
-      id: `cat-${Date.now()}`,
-      slug: title.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-      title,
-      icon: 'help_outline',
-      accordionBehavior: 'multi-open',
-      targetPages: ['all_pages'],
-      displayOrder: categories.length + 1,
-      faqsCount: 0,
-      items: [],
-    };
-    onUpdateCategories([...categories, newCat]);
-    setSelectedCatId(newCat.id);
-    toast.success(t('faqs_toast_category_created', { title }));
+  const handleSaveCategory = async (values: CategoryFormValues) => {
+    setIsSavingCategory(true);
+    try {
+      if (categoryModal === 'edit' && currentCategory) {
+        const saved = await onSaveCategory(values, currentCategory.id);
+        // Only the settings come from the server: the questions may hold edits that are not published yet.
+        onUpdateCategories(
+          categories.map((cat) =>
+            cat.id === currentCategory.id
+              ? { ...cat, title: saved.title, slug: saved.slug, icon: saved.icon, accordionBehavior: saved.accordionBehavior, targetPages: saved.targetPages }
+              : cat
+          )
+        );
+        toast.success(t('faqs_toast_category_updated', { title: saved.title }));
+      } else {
+        const saved = await onSaveCategory(values);
+        onUpdateCategories([...categories, saved]);
+        setSelectedCatId(saved.id);
+        setSelectedFaqId('');
+        toast.success(t('faqs_toast_category_created', { title: saved.title }));
+      }
+      setCategoryModal(null);
+    } catch (error) {
+      const { error: message, details } = (error ?? {}) as { error?: string; details?: string[] };
+      toast.error(t('faqs_toast_category_save_failed'), { description: details?.[0] ?? message });
+    } finally {
+      setIsSavingCategory(false);
+    }
   };
 
   const handleDuplicateFaq = () => {
-    if (!activeFaq) return;
+    if (!activeFaq || !currentCategory) return;
     const duplicated: FaqItem = {
       ...activeFaq,
       id: `faq-${Date.now().toString().slice(-4)}`,
@@ -189,7 +203,7 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
   };
 
   const handleDeleteFaq = () => {
-    if (!activeFaq || !window.confirm(t('faqs_confirm_delete'))) return;
+    if (!activeFaq || !currentCategory || !window.confirm(t('faqs_confirm_delete'))) return;
     const updatedItems = currentCategory.items.filter((i) => i.id !== activeFaq.id);
     onUpdateCategories(
       categories.map((cat) =>
@@ -216,16 +230,6 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
   const openStorefront = () => {
     window.open(process.env.NEXT_PUBLIC_STORE_FRONT_URL || '#', '_blank', 'noopener,noreferrer');
   };
-
-  if (!currentCategory) {
-    return (
-      <div className={`${CARD} p-10 text-center text-[#565e74] dark:text-slate-400`}>
-        <button onClick={handleAddCategory} className="text-[#004ac6] dark:text-blue-400 font-semibold" type="button">
-          {t('faqs_new_category')}
-        </button>
-      </div>
-    );
-  }
 
   const kpis = [
     {
@@ -293,8 +297,9 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
 
           <button
             type="button"
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white dark:bg-[#131b2e] text-[#0b1c30] dark:text-white hover:bg-[#eff4ff] dark:hover:bg-slate-800 transition-colors text-[13px] shadow-2xs font-medium border border-[#e5eeff] dark:border-slate-700"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white dark:bg-[#131b2e] text-[#0b1c30] dark:text-white hover:bg-[#eff4ff] dark:hover:bg-slate-800 transition-colors text-[13px] shadow-2xs font-medium border border-[#e5eeff] dark:border-slate-700 disabled:opacity-50 disabled:pointer-events-none"
             onClick={() => setIsExportModalOpen(true)}
+            disabled={!currentCategory}
           >
             <Icon name="download" className="text-[18px]" />
             <span>{t('faqs_export_json')}</span>
@@ -341,7 +346,7 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
               <button
                 type="button"
                 className="flex items-center gap-1 text-[11px] text-[#004ac6] dark:text-blue-400 hover:text-[#2563eb] transition-colors font-semibold"
-                onClick={handleAddCategory}
+                onClick={() => setCategoryModal('create')}
               >
                 <Icon name="add_circle" className="text-[16px]" />
                 <span>{t('faqs_new_category')}</span>
@@ -349,8 +354,15 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
             </div>
 
             <div className="flex flex-col gap-1.5">
+              {categories.length === 0 && (
+                <div className="flex flex-col items-center gap-1 px-3 py-6 text-center">
+                  <Icon name="folder_open" className="text-[28px] text-[#737686]" />
+                  <span className="text-[13px] font-semibold text-[#0b1c30] dark:text-white">{t('faqs_empty_categories')}</span>
+                  <span className="text-[11px] text-[#565e74] dark:text-slate-400">{t('faqs_empty_categories_hint')}</span>
+                </div>
+              )}
               {categories.map((cat) => {
-                const isSelected = cat.id === currentCategory.id;
+                const isSelected = cat.id === currentCategory?.id;
                 return (
                   <button
                     key={cat.id}
@@ -382,6 +394,8 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
             </div>
           </div>
 
+          {currentCategory && (
+          <>
           <div className={`${CARD} p-4 flex flex-col gap-4`}>
             <div className="flex items-center justify-between pb-1 border-b border-[#f0f4ff] dark:border-slate-800">
               <div className="flex items-center gap-1.5">
@@ -393,79 +407,43 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
               </span>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className={FIELD_LABEL}>{t('faqs_displayed_title')}</label>
-              <input
-                type="text"
-                className={`h-10 px-3 ${INPUT}`}
-                value={currentCategory.title}
-                onChange={(e) => updateCategoryProp('title', e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className={FIELD_LABEL}>{t('faqs_anchor_slug')}</label>
-              <div className="flex items-center bg-[#eff4ff] dark:bg-slate-800 px-3 h-10 rounded-lg border border-transparent focus-within:border-[#2563eb]/40">
-                <span className="text-[#737686] text-[13px] font-mono mr-1">/faq#</span>
-                <input
-                  type="text"
-                  className="w-full bg-transparent text-[13px] text-[#0b1c30] dark:text-white focus:outline-none"
-                  value={currentCategory.slug}
-                  onChange={(e) => updateCategoryProp('slug', e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-1">
-                <label className={FIELD_LABEL}>{t('faqs_icon')}</label>
-                <div className="flex items-center gap-1.5 h-10 px-2.5 bg-[#eff4ff] dark:bg-slate-800 rounded-lg">
-                  <Icon name={currentCategory.icon} className="text-[18px] text-[#004ac6] dark:text-blue-400" />
-                  <input
-                    type="text"
-                    className="w-full bg-transparent text-[13px] text-[#0b1c30] dark:text-white focus:outline-none"
-                    value={currentCategory.icon}
-                    onChange={(e) => updateCategoryProp('icon', e.target.value)}
-                  />
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-[#eff4ff] dark:bg-slate-800 flex items-center justify-center text-[#004ac6] dark:text-blue-400 shrink-0">
+                  <Icon name={currentCategory.icon} className="text-[20px]" />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[14px] font-semibold text-[#0b1c30] dark:text-white truncate">{currentCategory.title}</span>
+                  <span className="text-[11px] text-[#737686] font-mono truncate">/faq#{currentCategory.slug}</span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className={FIELD_LABEL}>{t('faqs_behavior')}</label>
-                <select
-                  className="h-10 px-1.5 bg-[#eff4ff] dark:bg-slate-800 rounded-lg text-[13px] text-[#0b1c30] dark:text-white focus:outline-none cursor-pointer"
-                  value={currentCategory.accordionBehavior}
-                  onChange={(e) => updateCategoryProp('accordionBehavior', e.target.value as AccordionBehavior)}
-                >
-                  {ACCORDION_OPTIONS.map(({ value, labelKey }) => (
-                    <option key={value} value={value}>{t(labelKey)}</option>
-                  ))}
-                </select>
+                <span className={FIELD_LABEL}>{t('faqs_behavior')}</span>
+                <span className="text-[13px] text-[#0b1c30] dark:text-white">
+                  {t(ACCORDION_OPTIONS.find((o) => o.value === currentCategory.accordionBehavior)?.labelKey ?? 'faqs_accordion_multi')}
+                </span>
               </div>
-            </div>
 
-            <div className="flex flex-col gap-1.5 pt-1">
-              <span className={FIELD_LABEL}>{t('faqs_targets')}</span>
-              <div className="flex flex-col gap-1.5 text-[13px] text-[#0b1c30] dark:text-white">
-                {TARGET_PAGES.map(({ key, labelKey }) => (
-                  <label key={key} className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={currentCategory.targetPages.includes(key)}
-                      onChange={(e) =>
-                        updateCategoryProp(
-                          'targetPages',
-                          e.target.checked
-                            ? [...currentCategory.targetPages, key]
-                            : currentCategory.targetPages.filter((p) => p !== key)
-                        )
-                      }
-                      className="rounded accent-[#2563eb] w-4 h-4 cursor-pointer"
-                    />
-                    <span className="text-[11px]">{t(labelKey)}</span>
-                  </label>
-                ))}
+              <div className="flex flex-col gap-1.5">
+                <span className={FIELD_LABEL}>{t('faqs_targets')}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {TARGET_PAGES.filter(({ key }) => currentCategory.targetPages.includes(key)).map(({ key, labelKey }) => (
+                    <span key={key} className="px-2 py-0.5 bg-[#eff4ff] dark:bg-slate-800 text-[#0b1c30] dark:text-slate-200 text-[11px] rounded">
+                      {t(labelKey)}
+                    </span>
+                  ))}
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setCategoryModal('edit')}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#eff4ff] dark:bg-slate-800 hover:bg-[#dae2fd] dark:hover:bg-slate-700 text-[#004ac6] dark:text-blue-400 rounded-lg text-[12px] font-semibold transition-colors"
+              >
+                <Icon name="edit" className="text-[16px]" />
+                <span>{t('faqs_category_edit')}</span>
+              </button>
             </div>
           </div>
 
@@ -488,10 +466,30 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
               <span>{t('faqs_copy_json')}</span>
             </button>
           </div>
+          </>
+          )}
         </div>
 
         {/* Right column: question builder */}
         <div className="lg:col-span-8 flex flex-col gap-6">
+          {!currentCategory ? (
+            <div className={`${CARD} p-12 flex flex-col items-center gap-3 text-center`}>
+              <div className="w-14 h-14 rounded-xl bg-[#eff4ff] dark:bg-slate-800 flex items-center justify-center text-[#004ac6] dark:text-blue-400">
+                <Icon name="quiz" className="text-[32px]" />
+              </div>
+              <h2 className="text-[15px] text-[#0b1c30] dark:text-white font-bold">{t('faqs_empty_title')}</h2>
+              <p className="text-[13px] text-[#565e74] dark:text-slate-400 max-w-sm">{t('faqs_empty_hint')}</p>
+              <button
+                type="button"
+                onClick={() => setCategoryModal('create')}
+                className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-[#2563eb] hover:bg-[#004ac6] text-white rounded-lg text-[13px] font-semibold shadow-sm transition-colors"
+              >
+                <Icon name="add_circle" className="text-[18px]" />
+                <span>{t('faqs_new_category')}</span>
+              </button>
+            </div>
+          ) : (
+          <>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2.5">
               <h2 className="text-[15px] text-[#0b1c30] dark:text-white font-bold">{t('faqs_questions_title')}</h2>
@@ -913,6 +911,12 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
             </div>
           )}
 
+          {currentCategory.items.length === 0 && (
+            <div className={`${CARD} p-8 text-center text-[13px] text-[#565e74] dark:text-slate-400`}>
+              {t('faqs_empty_questions')}
+            </div>
+          )}
+
           {/* Other questions in this category */}
           <div className="flex flex-col gap-2.5">
             {currentCategory.items
@@ -967,10 +971,26 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ categories, onUpdateCategori
             <Icon name="add_circle" className="text-[20px]" />
             <span>{t('faqs_add_question_block')}</span>
           </button>
+          </>
+          )}
         </div>
       </div>
 
-      <JsonExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} category={currentCategory} />
+      {categoryModal && (
+        <CategoryModal
+          key={categoryModal === 'edit' ? currentCategory?.id : 'new'}
+          isOpen
+          onClose={() => setCategoryModal(null)}
+          onSave={handleSaveCategory}
+          isSaving={isSavingCategory}
+          initialData={categoryModal === 'edit' ? currentCategory : null}
+          takenSlugs={categories.filter((c) => c.id !== (categoryModal === 'edit' ? currentCategory?.id : undefined)).map((c) => c.slug)}
+        />
+      )}
+
+      {currentCategory && (
+        <JsonExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} category={currentCategory} />
+      )}
     </div>
   );
 };

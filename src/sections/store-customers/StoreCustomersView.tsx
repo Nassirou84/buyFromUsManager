@@ -4,10 +4,20 @@ import { toast } from 'sonner';
 import { Icon } from '@/components/lucide-icon';
 import { Customer, CustomerOrder, CustomerSegment } from './types';
 import { InvoicePdfModal } from './InvoicePdfModal';
+import { CustomerDetailsModal } from './CustomerDetailsModal';
+import { CARD, KPI_LABEL, TH, TD, PaymentIcon } from './shared';
 import { AddCustomerModal } from './AddCustomerModal';
+import { RECENT_ORDER_DAYS } from './mapper';
 
 interface StoreCustomersViewProps {
   customers: Customer[];
+  totalItems: number;
+  page: number;
+  pageSize: number;
+  isLoading?: boolean;
+  isError?: boolean;
+  onPageChange: (page: number) => void;
+  onSearchChange: (keyword: string) => void;
   onUpdateCustomer: (updated: Customer) => void;
   onAddCustomer: (customer: Customer) => void;
 }
@@ -22,42 +32,34 @@ const SEGMENT_PILLS: { key: SegmentFilter; labelKey: string; active: string; dot
   { key: 'Comptes en attente', labelKey: 'customers_pill_pending', active: 'bg-[#ba1a1a] text-white font-bold', dot: 'bg-[#ba1a1a]' },
 ];
 
-const CARD = 'bg-white dark:bg-[#131b2e] rounded-xl border border-[#e5eeff] dark:border-slate-800 shadow-2xs';
-const KPI_LABEL = 'text-[11px] font-semibold text-[#565e74] dark:text-slate-400 uppercase tracking-wider';
-const TH = 'py-3 px-4 first:px-5 last:px-5';
-const TD = 'py-3.5 px-4 first:px-5 last:px-5';
-
-const PaymentIcon: React.FC<{ method: string }> = ({ method }) => {
-  if (method.includes('Wave')) return <Icon name="waves" className="text-[16px] text-[#004ac6] dark:text-blue-400" />;
-  if (method.includes('Orange')) return <Icon name="smartphone" className="text-[16px] text-[#bc4800]" />;
-  if (method.includes('Carte')) return <Icon name="credit_card" className="text-[16px] text-[#004ac6] dark:text-blue-400" />;
-  return <Icon name="payments" className="text-[16px] text-[#004ac6] dark:text-blue-400" />;
-};
-
-export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customers, onUpdateCustomer, onAddCustomer }) => {
+export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
+  customers,
+  totalItems,
+  page,
+  pageSize,
+  isLoading,
+  isError,
+  onPageChange,
+  onSearchChange,
+  onUpdateCustomer,
+  onAddCustomer,
+}) => {
   const { t } = useLocales();
-  const [selectedId, setSelectedId] = useState<string>(customers[0]?.id || '');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [invoiceOrder, setInvoiceOrder] = useState<CustomerOrder | null>(null);
 
-  const activeCustomer = customers.find((c) => c.id === selectedId) || customers[0];
+  const activeCustomer = customers.find((c) => c.id === selectedId) ?? null;
 
-  const filteredCustomers = customers.filter((c) => {
-    if (segmentFilter !== 'all' && c.segment !== segmentFilter) return false;
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      c.name.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q) ||
-      c.phone.toLowerCase().includes(q) ||
-      c.id.toLowerCase().includes(q)
-    );
-  });
+  // Text search runs on the server (keyword filter); only the segment filter is applied to the loaded page.
+  const filteredCustomers = customers.filter((c) => segmentFilter === 'all' || c.segment === segmentFilter);
+
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
   const countFor = (key: SegmentFilter) =>
-    key === 'all' ? customers.length : customers.filter((c) => c.segment === key).length;
+    key === 'all' ? totalItems : customers.filter((c) => c.segment === key).length;
 
   const segmentBadge = (segment: CustomerSegment) => {
     switch (segment) {
@@ -103,36 +105,6 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customer
     a.click();
     URL.revokeObjectURL(url);
     toast.success(t('customers_toast_export'));
-  };
-
-  const handleAddNote = () => {
-    if (!activeCustomer) return;
-    const note = window.prompt(t('customers_note_prompt'));
-    if (!note) return;
-    onUpdateCustomer({
-      ...activeCustomer,
-      crmNotes: `${activeCustomer.crmNotes}${t('customers_note_entry', { date: new Date().toLocaleDateString(), note })}`,
-    });
-    toast.success(t('customers_toast_note'));
-  };
-
-  const handleEditAddress = () => {
-    if (!activeCustomer) return;
-    const newAddress = window.prompt(t('customers_address_prompt'), activeCustomer.deliveryAddress.residence);
-    if (!newAddress) return;
-    onUpdateCustomer({
-      ...activeCustomer,
-      deliveryAddress: { ...activeCustomer.deliveryAddress, residence: newAddress },
-    });
-    toast.success(t('customers_toast_address'));
-  };
-
-  const handleEditPhone = () => {
-    if (!activeCustomer) return;
-    const newPhone = window.prompt(t('customers_phone_prompt'), activeCustomer.phone);
-    if (!newPhone) return;
-    onUpdateCustomer({ ...activeCustomer, phone: newPhone });
-    toast.success(t('customers_toast_phone'));
   };
 
   return (
@@ -192,7 +164,7 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customer
             </div>
           </div>
           <div className="flex items-baseline gap-2 pt-1">
-            <span className="text-2xl font-bold text-[#0b1c30] dark:text-white">4,820</span>
+            <span className="text-2xl font-bold text-[#0b1c30] dark:text-white">{totalItems.toLocaleString()}</span>
             <span className="inline-flex items-center text-[11px] text-[#004ac6] dark:text-blue-400 font-semibold">
               <Icon name="trending_up" className="text-[14px]" />
               +12.4%
@@ -260,7 +232,10 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customer
               placeholder={t('customers_search_placeholder')}
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                onSearchChange(e.target.value);
+              }}
             />
           </div>
 
@@ -309,12 +284,13 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customer
           <div className="flex items-center gap-2.5">
             <h2 className="text-[15px] text-[#0b1c30] dark:text-white font-bold">{t('customers_directory')}</h2>
             <span className="px-2.5 py-0.5 bg-[#eff4ff] dark:bg-slate-800 text-[#565e74] dark:text-slate-300 text-[11px] rounded-full">
-              {t('customers_showing', { shown: filteredCustomers.length, total: customers.length })}
+              {t('customers_showing', { shown: filteredCustomers.length, total: totalItems })}
             </span>
           </div>
           <button
             onClick={() => {
               setSearchQuery('');
+              onSearchChange('');
               setSegmentFilter('all');
               toast.info(t('customers_toast_refresh'));
             }}
@@ -340,6 +316,13 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customer
               </tr>
             </thead>
             <tbody className="text-[#0b1c30] dark:text-slate-100 text-[13px] divide-y divide-[#f0f4ff] dark:divide-slate-800">
+              {(isLoading || isError || filteredCustomers.length === 0) && (
+                <tr>
+                  <td colSpan={7} className={`${TD} text-center text-[#565e74] dark:text-slate-400`}>
+                    {isLoading ? t('customers_loading') : isError ? t('customers_load_error') : t('customers_empty')}
+                  </td>
+                </tr>
+              )}
               {filteredCustomers.map((customer) => {
                 const isSelected = customer.id === activeCustomer?.id;
                 return (
@@ -390,6 +373,18 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customer
                     <td className={TD}>
                       <div className="flex flex-col">
                         <span className="font-bold">{t('customers_n_orders', { count: customer.ordersCount })}</span>
+                        <span
+                          className={`text-[11px] ${
+                            customer.lastSevenDaysOrdersCount
+                              ? 'text-[#004ac6] dark:text-blue-400 font-semibold'
+                              : 'text-[#565e74] dark:text-slate-400'
+                          }`}
+                        >
+                          {t('customers_orders_last_days_short', {
+                            count: customer.lastSevenDaysOrdersCount ?? 0,
+                            days: RECENT_ORDER_DAYS,
+                          })}
+                        </span>
                         <span
                           className={`text-[11px] ${
                             customer.lastActivity.includes('Aujourd')
@@ -454,287 +449,38 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customer
         </div>
 
         <div className="p-4 bg-[#eff4ff]/60 dark:bg-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-[#565e74] dark:text-slate-400 text-[11px] border-t border-[#f0f4ff] dark:border-slate-800">
-          <span>{t('customers_showing_footer', { shown: filteredCustomers.length, total: customers.length })}</span>
+          <span>{t('customers_showing_footer', { shown: filteredCustomers.length, total: totalItems })}</span>
           <div className="flex items-center gap-1.5">
-            <button className="px-2.5 py-1 bg-white dark:bg-[#131b2e] rounded shadow-2xs disabled:opacity-50" disabled type="button">
+            <button
+              className="px-2.5 py-1 bg-white dark:bg-[#131b2e] rounded shadow-2xs disabled:opacity-50"
+              disabled={page <= 1}
+              onClick={() => onPageChange(page - 1)}
+              type="button"
+            >
               {t('customers_prev')}
             </button>
-            <span className="px-2.5 py-1 bg-[#2563eb] text-white rounded font-semibold">1</span>
-            <button className="px-2.5 py-1 bg-white dark:bg-[#131b2e] rounded shadow-2xs disabled:opacity-50" disabled type="button">
+            <span className="px-2.5 py-1 bg-[#2563eb] text-white rounded font-semibold">
+              {page} / {totalPages}
+            </span>
+            <button
+              className="px-2.5 py-1 bg-white dark:bg-[#131b2e] rounded shadow-2xs disabled:opacity-50"
+              disabled={page >= totalPages}
+              onClick={() => onPageChange(page + 1)}
+              type="button"
+            >
               {t('customers_next')}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Active customer detail & order history */}
-      {activeCustomer && (
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
-            <div className="flex items-center gap-2.5">
-              <div className="w-3 h-6 bg-[#2563eb] rounded-full"></div>
-              <h2 className="text-[15px] text-[#0b1c30] dark:text-white font-bold">
-                {t('customers_detail_title')}{' '}
-                <span className="text-[#004ac6] dark:text-blue-400 font-bold">{activeCustomer.name}</span>{' '}
-                <span className="text-[#565e74] dark:text-slate-400 font-mono font-normal text-[13px]">(#{activeCustomer.id})</span>
-              </h2>
-            </div>
-            {activeCustomer.segment === 'VIP Gold' && (
-              <span className="px-2.5 py-1 rounded-full bg-[#ffdbcd] text-[#943700] text-[11px] font-semibold flex items-center gap-1 self-start">
-                <Icon name="military_tech" className="text-[14px]" />
-                {t('customers_gold_badge')}
-              </span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Identity & contact */}
-            <div className={`${CARD} p-5 flex flex-col justify-between`}>
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <span className={KPI_LABEL}>{t('customers_identity')}</span>
-                  {activeCustomer.isVerified && (
-                    <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#004ac6] text-[11px] rounded font-medium">
-                      {t('customers_verified_account')}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 pt-1">
-                  <div className="w-14 h-14 rounded-full bg-[#2563eb] flex items-center justify-center text-white text-[15px] font-bold shadow-md">
-                    {activeCustomer.avatarInitials}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[15px] text-[#0b1c30] dark:text-white font-bold">{activeCustomer.name}</span>
-                    <span className="text-[#565e74] dark:text-slate-400 text-[13px]">
-                      {t('customers_member_since', { date: activeCustomer.memberSince })}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5 pt-2 text-[13px]">
-                  <div className="flex items-center gap-2.5">
-                    <Icon name="call" className="text-[18px] text-[#737686]" />
-                    <span className="text-[#0b1c30] dark:text-white font-medium">{activeCustomer.phone}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Icon name="mail" className="text-[18px] text-[#737686]" />
-                    <span className="text-[#0b1c30] dark:text-white">{activeCustomer.email}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 flex items-center gap-2.5">
-                <a
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-[#eff4ff] dark:bg-slate-800 text-[#0b1c30] dark:text-white hover:bg-[#dae2fd] dark:hover:bg-slate-700 text-[13px] rounded-lg transition-colors font-semibold"
-                  href={`https://wa.me/${activeCustomer.phone.replace(/[^0-9]/g, '')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Icon name="chat" className="text-[18px] text-[#004ac6] dark:text-blue-400" />
-                  <span>{t('customers_whatsapp')}</span>
-                </a>
-                <button
-                  onClick={handleEditPhone}
-                  className="px-3.5 py-2 bg-[#eff4ff] dark:bg-slate-800 text-[#0b1c30] dark:text-white hover:bg-[#dae2fd] dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center justify-center"
-                  type="button"
-                  title={t('customers_edit_contact')}
-                >
-                  <Icon name="edit" className="text-[18px]" />
-                </button>
-              </div>
-            </div>
-
-            {/* Default delivery address */}
-            <div className={`${CARD} p-5 flex flex-col justify-between`}>
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <span className={KPI_LABEL}>{t('customers_main_address')}</span>
-                  <Icon name="local_shipping" className="text-[20px] text-[#004ac6] dark:text-blue-400" />
-                </div>
-                <div className="flex flex-col gap-1 pt-1">
-                  <span className="text-[13px] font-bold text-[#0b1c30] dark:text-white">{activeCustomer.deliveryAddress.residence}</span>
-                  <span className="text-[#565e74] dark:text-slate-400 text-[13px]">{activeCustomer.deliveryAddress.district}</span>
-                  <span className="text-[#565e74] dark:text-slate-400 text-[13px]">{activeCustomer.deliveryAddress.city}</span>
-                </div>
-                <div className="p-2.5 bg-[#eff4ff]/60 dark:bg-slate-800/60 rounded-lg mt-1 flex items-center gap-2.5">
-                  <Icon name="info" className="text-[18px] text-[#004ac6] dark:text-blue-400" />
-                  <span className="text-[#565e74] dark:text-slate-400 text-[11px]">
-                    {t('customers_pref_slot', { slot: activeCustomer.deliveryAddress.preferredTimeSlot })}
-                  </span>
-                </div>
-              </div>
-
-              <div className="pt-4 flex items-center justify-between gap-2 text-[#565e74] dark:text-slate-400 text-[11px]">
-                <span>
-                  {t('customers_carrier')}{' '}
-                  <strong className="text-[#0b1c30] dark:text-white">{activeCustomer.deliveryAddress.assignedCarrier}</strong>
-                </span>
-                <button onClick={handleEditAddress} className="text-[#004ac6] dark:text-blue-400 hover:underline font-semibold" type="button">
-                  {t('customers_edit_address')}
-                </button>
-              </div>
-            </div>
-
-            {/* CRM notes & loyalty */}
-            <div className={`${CARD} p-5 flex flex-col justify-between`}>
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <span className={KPI_LABEL}>{t('customers_crm_title')}</span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#004ac6] dark:text-blue-400">
-                    <Icon name="stars" className="text-[16px]" />
-                    {t('customers_points', { count: activeCustomer.loyaltyPoints })}
-                  </span>
-                </div>
-                <div className="p-4 bg-[#eff4ff]/60 dark:bg-slate-800/60 rounded-lg flex flex-col gap-1">
-                  <span className="text-[11px] font-semibold text-[#0b1c30] dark:text-white">{t('customers_note_label')}</span>
-                  <p className="text-[13px] text-[#565e74] dark:text-slate-300 italic leading-relaxed">"{activeCustomer.crmNotes}"</p>
-                </div>
-              </div>
-
-              <div className="pt-3 flex items-center justify-between gap-2">
-                <span className="text-[#565e74] dark:text-slate-400 text-[11px]">{t('customers_note_author')}</span>
-                <button onClick={handleAddNote} className="text-[#004ac6] dark:text-blue-400 hover:underline text-[11px] font-semibold" type="button">
-                  {t('customers_add_note')}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Orders history */}
-          <div className={`${CARD} overflow-hidden`}>
-            <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-[#f0f4ff] dark:border-slate-800">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className="text-[15px] text-[#0b1c30] dark:text-white font-bold">
-                  {t('customers_orders_of', { name: activeCustomer.name.split(' ')[0] })}
-                </h3>
-                <span className="px-2.5 py-0.5 bg-[#dae2fd] text-[#004ac6] text-[11px] rounded-full font-bold">
-                  {t('customers_orders_count', { count: activeCustomer.orders.length || activeCustomer.ordersCount })}
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  toast.success(t('customers_toast_statement', { name: activeCustomer.name }));
-                  window.print();
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#eff4ff] dark:bg-slate-800 hover:bg-[#dae2fd] dark:hover:bg-slate-700 text-[#0b1c30] dark:text-white text-[11px] rounded-lg transition-colors font-semibold"
-                type="button"
-              >
-                <Icon name="print" className="text-[16px]" />
-                <span>{t('customers_print_statement')}</span>
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-[#eff4ff]/60 dark:bg-slate-800/60 text-[#565e74] dark:text-slate-400 text-[11px] uppercase tracking-wider">
-                    <th className={TH}>{t('customers_col_order_no')}</th>
-                    <th className={TH}>{t('customers_col_date')}</th>
-                    <th className={TH}>{t('customers_col_items')}</th>
-                    <th className={TH}>{t('customers_col_total')}</th>
-                    <th className={TH}>{t('customers_col_delivery')}</th>
-                    <th className={TH}>{t('customers_col_payment_short')}</th>
-                    <th className={`${TH} text-right`}>{t('customers_col_quick_actions')}</th>
-                  </tr>
-                </thead>
-                <tbody className="text-[#0b1c30] dark:text-slate-100 text-[13px] divide-y divide-[#f0f4ff] dark:divide-slate-800">
-                  {activeCustomer.orders.map((order) => (
-                    <tr key={order.id} className="hover:bg-[#eff4ff]/60 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className={TD}>
-                        <div className="flex flex-col">
-                          <span className="font-mono font-bold text-[#004ac6] dark:text-blue-400">{order.orderNumber}</span>
-                          <span className="text-[#565e74] dark:text-slate-400 text-[11px]">{order.store}</span>
-                        </div>
-                      </td>
-                      <td className={`${TD} whitespace-nowrap`}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{order.date}</span>
-                          <span className="text-[#565e74] dark:text-slate-400 text-[11px]">{order.time}</span>
-                        </div>
-                      </td>
-                      <td className={TD}>
-                        {order.items.map((item, idx) => (
-                          <div key={idx} className="flex items-center gap-3">
-                            <img
-                              className="w-12 h-12 object-cover rounded-lg bg-slate-100 dark:bg-slate-800 shrink-0"
-                              src={item.image}
-                              alt={item.name}
-                            />
-                            <div className="flex flex-col max-w-xs">
-                              <span className="font-medium line-clamp-1">{item.name}</span>
-                              <span className="text-[#565e74] dark:text-slate-400 text-[11px]">
-                                {item.variant} • {t('customers_qty', { count: item.quantity })}
-                                {item.warranty ? ` • ${item.warranty}` : ''}
-                                {item.batteryHealth ? ` • ${item.batteryHealth}` : ''}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </td>
-                      <td className={`${TD} whitespace-nowrap`}>
-                        <div className="flex flex-col">
-                          <span className="font-bold">{order.totalAmount.toLocaleString()} FCFA</span>
-                          <span className="text-[#737686] text-[11px]">{t('customers_vat_included', { percent: order.taxIncludedPercent })}</span>
-                        </div>
-                      </td>
-                      <td className={`${TD} whitespace-nowrap`}>
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#e5eeff] dark:bg-slate-700 text-[11px] font-semibold">
-                          <Icon name="check_circle" className="text-[14px] text-[#004ac6] dark:text-blue-400" />
-                          {order.deliveryStatus}
-                        </span>
-                      </td>
-                      <td className={`${TD} whitespace-nowrap`}>
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium">
-                          <PaymentIcon method={order.paymentMethod} />
-                          {order.paymentMethod}
-                        </span>
-                      </td>
-                      <td className={`${TD} text-right whitespace-nowrap`}>
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => setInvoiceOrder(order)}
-                            className="p-1.5 text-[#565e74] dark:text-slate-400 hover:text-[#004ac6] dark:hover:text-blue-400 hover:bg-[#eff4ff] dark:hover:bg-slate-800 rounded-lg transition-colors"
-                            title={t('customers_download_invoice')}
-                            type="button"
-                          >
-                            <Icon name="picture_as_pdf" className="text-[20px]" />
-                          </button>
-                          <button
-                            onClick={() => toast.success(t('customers_toast_notification', { order: order.orderNumber }))}
-                            className="p-1.5 text-[#565e74] dark:text-slate-400 hover:text-[#004ac6] dark:hover:text-blue-400 hover:bg-[#eff4ff] dark:hover:bg-slate-800 rounded-lg transition-colors"
-                            title={t('customers_resend_notification')}
-                            type="button"
-                          >
-                            <Icon name="send_to_mobile" className="text-[20px]" />
-                          </button>
-                          <button
-                            onClick={() => setInvoiceOrder(order)}
-                            className="px-2.5 py-1 bg-[#eff4ff] dark:bg-slate-800 hover:bg-[#dae2fd] dark:hover:bg-slate-700 text-[11px] rounded-lg transition-colors font-medium"
-                            type="button"
-                          >
-                            {t('customers_details')}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="p-4 bg-[#eff4ff]/60 dark:bg-slate-800/60 flex items-center justify-between gap-2 text-[#565e74] dark:text-slate-400 text-[11px] border-t border-[#f0f4ff] dark:border-slate-800">
-              <span>{t('customers_last_orders', { count: activeCustomer.orders.length })}</span>
-              <button
-                className="text-[#004ac6] dark:text-blue-400 hover:underline font-semibold flex items-center gap-1"
-                onClick={() => toast.info(t('customers_toast_full_history'))}
-                type="button"
-              >
-                <span>{t('customers_view_full', { count: activeCustomer.ordersCount })}</span>
-                <Icon name="arrow_forward" className="text-[16px]" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CustomerDetailsModal
+        isOpen={!!activeCustomer}
+        onClose={() => setSelectedId(null)}
+        customer={activeCustomer}
+        onUpdateCustomer={onUpdateCustomer}
+        onViewInvoice={setInvoiceOrder}
+      />
 
       {activeCustomer && (
         <InvoicePdfModal
@@ -750,7 +496,6 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({ customer
         onClose={() => setIsAddModalOpen(false)}
         onAddCustomer={(newC) => {
           onAddCustomer(newC);
-          setSelectedId(newC.id);
         }}
       />
     </div>
