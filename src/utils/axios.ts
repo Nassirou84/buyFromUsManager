@@ -32,7 +32,7 @@ export const fetcher = async (args: string | [string, AxiosRequestConfig]) => {
 export const endpoints = {
   auth: {
     me: '/auth/me',
-    login: '/user_login',
+    login: '/admin_login',
     logout: '/auth/logout',
     refreshToken: '/token/refresh',
     confirm2FA: '/2fa/verify',

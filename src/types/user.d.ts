@@ -1,5 +1,5 @@
 
-type UserRole = 'ROLE_ADMIN' | 'ROLE_SUPERADMIN' | 'ROLE_USER';
+type UserRole = 'ROLE_ADMIN' | 'ROLE_SUPER_ADMIN' | 'ROLE_USER';
 
 export type Address = {
   isDefault: boolean;
@@ -37,10 +37,12 @@ interface User {
   lastName: string;
   email: string;
   roles?: UserRole[];
+  isGrantedAccess?: boolean | null;
   createdAt?: string;
   phone?: string;
   what3words?: string;
   street?: string;
+  fullName?: string;
   city?: string;
   state?: string;
   country?: string;

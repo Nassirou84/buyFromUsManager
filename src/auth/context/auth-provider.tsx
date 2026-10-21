@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer, useCallback, useMemo, useRef } from 'react';
 import { AuthContext } from './auth-context';
-import { isValidToken, setSession } from './utils';
+import { isValidToken, isTokenExpiringSoon, setSession } from './utils';
 import axios, { endpoints } from '@/utils/axios';
 import refreshTokenRequest from '@/api/user/refreshTokenRequest';
 import { ActionMapType, AuthStateType, AuthUserType } from '../types';
@@ -148,6 +148,27 @@ export function AuthProvider({ children }: Props) {
     initialize();
   }, [initialize]);
 
+  // Timers are throttled/paused while the tab is hidden or the machine sleeps,
+  // so the scheduled refresh can fire late. Catch up as soon as the tab is
+  // visible again or the network is back.
+  const tokenRef = useRef(state.token);
+  tokenRef.current = state.token;
+
+  useEffect(() => {
+    const catchUp = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (!tokenRef.current) return; // not logged in
+      if (isTokenExpiringSoon(tokenRef.current)) refreshSession();
+    };
+
+    document.addEventListener('visibilitychange', catchUp);
+    window.addEventListener('online', catchUp);
+    return () => {
+      document.removeEventListener('visibilitychange', catchUp);
+      window.removeEventListener('online', catchUp);
+    };
+  }, [refreshSession]);
+
   const login = useCallback(async (email: string, password: string, fingerprint?: FingerprintComponents) => {
     const data = {
       email,
@@ -187,9 +208,11 @@ export function AuthProvider({ children }: Props) {
     } catch (error: unknown) {
       const err = error as { TFARequired?: boolean };
       if (err.TFARequired) {
+        toast.info("Two-factor authentication required.");
         dispatch({
           type: Types.TFA_REQUIRED,
         });
+        throw new Error("2FA required");
       } else {
         throw error;
       }
