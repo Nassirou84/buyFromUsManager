@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import useLocales from '@/locales/use-locales';
 import { useState } from 'react';
-import useGetResetPasswordRequest from '@/api/user/reset-password-request';
+import useForgotPasswordRequest from '@/api/user/forgot-password-request';
 import { MailCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import LoadingButton from '@/components/loadin-button/loading-button';
@@ -17,7 +17,7 @@ export default function ForgotPasswordView() {
   const {
     mutateAsync: resetPasswordRequest,
     isPending
-  } = useGetResetPasswordRequest();
+  } = useForgotPasswordRequest();
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

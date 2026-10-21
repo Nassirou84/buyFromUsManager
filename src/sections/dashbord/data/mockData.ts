@@ -73,7 +73,7 @@ export const INITIAL_PRODUCTS: DropshipProduct[] = [
     sku: 'FB-ALI-7731-CHR',
     title: 'Merino Minimalist Knit',
     scrapedSubtitle: 'AliExpress: "100% Australian Merino Wool Pullover S..."',
-    sourceMarketplace: 'aliexpress',
+    sourceMarketplace: 'other',
     sourceLabel: 'ALI DIRECT',
     sourceId: '#100500582',
     sourceUrl: 'https://aliexpress.com/item/100500582.html',

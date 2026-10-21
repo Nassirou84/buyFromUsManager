@@ -1,47 +1,76 @@
 import useLocales from '@/locales/use-locales';
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/lucide-icon';
-import { BannerItem } from '@/types/marketing';
-import { INITIAL_BANNERS } from './data/mockBanners';
+import { Banner, BannerPayload } from '@/types/marketing';
+import useGetBanners, { GET_BANNERS_QUERY_KEY } from '@/api/banner/get-banners';
+import usePostBanner from '@/api/banner/post-banner';
+import usePatchBanner from '@/api/banner/patch-banner';
+import useDeleteBanner from '@/api/banner/delete-banner';
 import { UploadBannerModal } from './modals/UploadBannerModal';
 
 export const BannersView: React.FC = () => {
   const { t } = useLocales();
+  const queryClient = useQueryClient();
 
-  const [banners, setBanners] = useState<BannerItem[]>(INITIAL_BANNERS);
+  const { data: banners = [], isLoading, isError, refetch } = useGetBanners();
+  const { mutate: postBanner, isPending: isCreating } = usePostBanner();
+  const { mutate: patchBanner, isPending: isUpdating } = usePatchBanner();
+  const { mutate: deleteBanner } = useDeleteBanner();
+
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingBanner, setEditingBanner] = useState<BannerItem | null>(null);
+  const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
 
-  const handleToggleLive = (id: string) => {
-    const target = banners.find((b) => b.id === id);
-    if (!target) return;
-    setBanners(banners.map((b) => (b.id === id ? { ...b, isLive: !b.isLive } : b)));
-    toast.success(t(target.isLive ? 'banner_paused_toast' : 'banner_activated', { title: target.title }));
+  const refresh = () => queryClient.invalidateQueries({ queryKey: GET_BANNERS_QUERY_KEY });
+
+  const handleToggleLive = (banner: Banner) => {
+    patchBanner(
+      { id: banner.id, data: { isActive: !banner.isActive } },
+      {
+        onSuccess: () => {
+          refresh();
+          toast.success(t(banner.isActive ? 'banner_paused_toast' : 'banner_activated', { title: banner.title }));
+        },
+        onError: () => toast.error(t('banner_update_failed')),
+      }
+    );
   };
 
-  const handleMove = (index: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= banners.length) return;
-
-    const list = [...banners];
-    const moved = list[index];
-    list[index] = list[newIndex];
-    list[newIndex] = moved;
-
-    setBanners(list.map((item, idx) => ({ ...item, priority: idx + 1 })));
-    toast.success(t('banner_reordered', { title: moved.title, n: newIndex + 1 }));
+  const handleDelete = (banner: Banner) => {
+    deleteBanner(banner.id, {
+      onSuccess: () => {
+        refresh();
+        toast.success(t('banner_removed', { title: banner.title }));
+      },
+      onError: () => toast.error(t('banner_delete_failed')),
+    });
   };
 
-  const handleDelete = (id: string) => {
-    const target = banners.find((b) => b.id === id);
-    setBanners(banners.filter((b) => b.id !== id).map((item, idx) => ({ ...item, priority: idx + 1 })));
-    toast.success(t('banner_removed', { title: target?.title ?? '' }));
-  };
-
-  const handleSaveBanner = (banner: BannerItem) => {
-    setBanners(editingBanner ? banners.map((b) => (b.id === banner.id ? banner : b)) : [...banners, banner]);
-    setEditingBanner(null);
+  const handleSaveBanner = (data: BannerPayload) => {
+    if (editingBanner) {
+      patchBanner(
+        { id: editingBanner.id, data },
+        {
+          onSuccess: () => {
+            refresh();
+            toast.success(t('banner_updated'));
+            setModalOpen(false);
+            setEditingBanner(null);
+          },
+          onError: () => toast.error(t('banner_update_failed')),
+        }
+      );
+      return;
+    }
+    postBanner(data, {
+      onSuccess: () => {
+        refresh();
+        toast.success(t('banner_added'));
+        setModalOpen(false);
+      },
+      onError: () => toast.error(t('banner_create_failed')),
+    });
   };
 
   return (
@@ -72,98 +101,82 @@ export const BannersView: React.FC = () => {
         </button>
       </div>
 
+      {isLoading && (
+        <div className="p-6 text-sm text-[#565e74] dark:text-slate-400">{t('banners_loading')}</div>
+      )}
+
+      {isError && (
+        <div className="p-6 bg-white dark:bg-[#131b2e] rounded-xl border border-[#e5eeff] dark:border-gray-800 flex items-center justify-between gap-4">
+          <span className="text-sm text-red-600">{t('banners_load_failed')}</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="px-4 py-2 text-xs font-semibold text-[#004ac6] dark:text-blue-400 hover:bg-[#eff4ff] dark:hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            {t('banners_retry')}
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !isError && banners.length === 0 && (
+        <div className="p-6 text-sm text-[#565e74] dark:text-slate-400">{t('banners_empty')}</div>
+      )}
+
       {/* Banner Cards List */}
       <div className="flex flex-col gap-4">
-        {banners.map((banner, index) => (
+        {banners.map((banner) => (
           <div
             key={banner.id}
             className={`p-6 bg-white dark:bg-[#131b2e] rounded-xl shadow-xs border border-[#e5eeff] dark:border-gray-800 flex flex-col lg:flex-row lg:items-center justify-between gap-6 group hover:shadow-md transition-shadow duration-200 ${
-              !banner.isLive ? 'opacity-80' : ''
+              !banner.isActive ? 'opacity-80' : ''
             }`}
           >
-            {/* Left: Reorder Controls, Priority, Image & Title */}
+            {/* Left: Image, Name & Title */}
             <div className="flex items-center gap-4">
-              {/* Reorder Buttons */}
-              <div className="flex flex-col items-center gap-0.5 text-gray-400">
-                <button
-                  onClick={() => handleMove(index, 'up')}
-                  disabled={index === 0}
-                  className="p-1 hover:text-[#004ac6] disabled:opacity-20 disabled:hover:text-gray-400 transition-colors"
-                  title={t('banner_move_up')}
-                >
-                  <Icon name="arrow_upward" className="text-[18px]" />
-                </button>
-                <button
-                  onClick={() => handleMove(index, 'down')}
-                  disabled={index === banners.length - 1}
-                  className="p-1 hover:text-[#004ac6] disabled:opacity-20 disabled:hover:text-gray-400 transition-colors"
-                  title={t('banner_move_down')}
-                >
-                  <Icon name="arrow_downward" className="text-[18px]" />
-                </button>
-              </div>
-
-              {/* Priority Badge */}
-              <span className="w-7 h-7 rounded-full bg-[#dae2fd] dark:bg-blue-950 text-[#004ac6] dark:text-blue-300 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                #{banner.priority}
-              </span>
-
               {/* Thumbnail Image */}
               <div className="w-32 h-20 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 relative flex-shrink-0 group-hover:scale-[1.02] transition-transform">
-                <img
-                  src={banner.imageUrl}
-                  alt={banner.altText}
-                  className="w-full h-full object-cover"
-                />
+                {banner.imageUrl && (
+                  <img
+                    src={banner.imageUrl}
+                    alt={t('banner_alt', { title: banner.title })}
+                    className="w-full h-full object-cover"
+                  />
+                )}
               </div>
 
               {/* Info */}
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] bg-[#eff4ff] dark:bg-gray-800 px-2 py-0.5 text-[#004ac6] dark:text-blue-400 font-semibold rounded">
-                    {banner.deviceTarget === 'desktop_mobile'
-                      ? t('banner_desktop_mobile')
-                      : banner.deviceTarget === 'desktop'
-                      ? t('banner_desktop_only')
-                      : t('banner_mobile_only')}
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                    {t('banner_priority_tier', { n: banner.priority })}
+                  <span className="text-[11px] bg-[#eff4ff] dark:bg-gray-800 px-2 py-0.5 text-[#004ac6] dark:text-blue-400 font-semibold rounded font-mono">
+                    {banner.name}
                   </span>
                 </div>
                 <h3 className="text-base text-[#0b1c30] dark:text-white font-semibold">
                   {banner.title}
                 </h3>
-                <span className="text-xs text-gray-400 flex items-center gap-1 mt-1 font-mono">
-                  <Icon name="link" className="text-[14px]" />
-                  <span>{banner.targetUrl}</span>
-                </span>
+                {banner.content && (
+                  <p className="text-xs text-[#565e74] dark:text-slate-400 mt-1 line-clamp-2 max-w-xl">
+                    {banner.content}
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Right: Schedule, Live Display Toggle, Actions */}
+            {/* Right: Live Display Toggle, Actions */}
             <div className="flex flex-wrap items-center gap-8 pl-12 lg:pl-0">
-              <div className="flex flex-col">
-                <span className="text-[11px] text-gray-400 uppercase tracking-wider font-semibold">
-                  {t('banner_schedule')}
-                </span>
-                <span className="text-xs font-medium text-[#0b1c30] dark:text-white">
-                  {banner.scheduleLabel}
-                </span>
-              </div>
-
               <div className="flex items-center gap-3">
                 <span
                   className={`text-xs font-semibold ${
-                    banner.isLive ? 'text-[#004ac6] dark:text-blue-400' : 'text-gray-400'
+                    banner.isActive ? 'text-[#004ac6] dark:text-blue-400' : 'text-gray-400'
                   }`}
                 >
-                  {banner.isLive ? t('banner_live_display') : t('banner_paused')}
+                  {banner.isActive ? t('banner_live_display') : t('banner_paused')}
                 </span>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
-                    checked={banner.isLive}
-                    onChange={() => handleToggleLive(banner.id)}
+                    checked={banner.isActive}
+                    onChange={() => handleToggleLive(banner)}
+                    disabled={isUpdating}
                     className="sr-only peer"
                     type="checkbox"
                   />
@@ -183,7 +196,7 @@ export const BannersView: React.FC = () => {
                   <Icon name="edit" className="text-[20px]" />
                 </button>
                 <button
-                  onClick={() => handleDelete(banner.id)}
+                  onClick={() => handleDelete(banner)}
                   className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
                   title={t('banner_remove')}
                 >
@@ -205,7 +218,7 @@ export const BannersView: React.FC = () => {
           }}
           onSave={handleSaveBanner}
           initialData={editingBanner}
-          nextPriority={banners.length + 1}
+          isSaving={isCreating || isUpdating}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 import useLocales from '@/locales/use-locales';
 import React from 'react';
 import { Icon } from '@/components/lucide-icon';
-import { ScraperChannelStats } from '../../types';
+import { ScraperChannelStats } from '../types';
 
 interface ScraperThroughputCardsProps {
   channels: ScraperChannelStats[];

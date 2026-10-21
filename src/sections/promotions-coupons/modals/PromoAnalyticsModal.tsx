@@ -34,7 +34,7 @@ export const PromoAnalyticsModal: React.FC<PromoAnalyticsModalProps> = ({ promo,
                 <span className="text-xs font-semibold text-gray-500">{t('promo_analytics_title')}</span>
               </div>
               <h3 className="font-semibold text-base text-[#0b1c30] dark:text-white mt-0.5">
-                {promo.campaignLabel}
+                {promo.campaignLabel || promo.discountDisplay}
               </h3>
             </div>
           </div>
@@ -48,32 +48,8 @@ export const PromoAnalyticsModal: React.FC<PromoAnalyticsModalProps> = ({ promo,
 
         {/* Analytics Body */}
         <div className="p-6 flex flex-col gap-6">
-          {/* 3 Metric Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-[#eff4ff] dark:bg-gray-800/60 rounded-xl border border-[#e5eeff] dark:border-gray-700">
-              <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
-                {t('promo_attributed_revenue')}
-              </span>
-              <div className="text-2xl font-bold text-[#0b1c30] dark:text-white mt-1">
-                ${(promo.revenueGenerated || 42800).toLocaleString()}.00
-              </div>
-              <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1 mt-1">
-                <Icon name="trending_up" className="text-[14px]" /> {t('promo_vs_prior')}
-              </span>
-            </div>
-
-            <div className="p-4 bg-[#eff4ff] dark:bg-gray-800/60 rounded-xl border border-[#e5eeff] dark:border-gray-700">
-              <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
-                {t('promo_claim_conversion')}
-              </span>
-              <div className="text-2xl font-bold text-[#0b1c30] dark:text-white mt-1">
-                {promo.conversionRate || 92.4}%
-              </div>
-              <span className="text-[11px] text-blue-600 font-semibold flex items-center gap-1 mt-1">
-                {t('promo_high_intent')}
-              </span>
-            </div>
-
+          {/* Metric Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 bg-[#eff4ff] dark:bg-gray-800/60 rounded-xl border border-[#e5eeff] dark:border-gray-700">
               <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
                 {t('promo_total_claims')}
@@ -91,6 +67,17 @@ export const PromoAnalyticsModal: React.FC<PromoAnalyticsModalProps> = ({ promo,
                 />
               </div>
             </div>
+
+            <div className="p-4 bg-[#eff4ff] dark:bg-gray-800/60 rounded-xl border border-[#e5eeff] dark:border-gray-700">
+              <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+                {t('promo_col_validity')}
+              </span>
+              <div className="text-sm font-bold text-[#0b1c30] dark:text-white mt-2">
+                {promo.validityStart}
+                {promo.validityEnd ? ` - ${promo.validityEnd}` : ''}
+              </div>
+              <span className="text-[11px] text-gray-500 mt-1 block">{promo.validityNote}</span>
+            </div>
           </div>
 
           {/* Breakdown */}
@@ -103,19 +90,11 @@ export const PromoAnalyticsModal: React.FC<PromoAnalyticsModalProps> = ({ promo,
                 <span className="text-gray-500">{t('promo_discount_structure')}</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">{promo.discountDisplay}</span>
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center justify-between py-1">
                 <span className="text-gray-500">{t('promo_min_basket_req')}</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">
                   {promo.minSpend ? `$${promo.minSpend.toFixed(2)}` : t('promo_none')}
                 </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-800">
-                <span className="text-gray-500">{t('promo_aov')}</span>
-                <span className="font-semibold text-emerald-600 font-mono">{t('promo_aov_value')}</span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-gray-500">{t('promo_retention')}</span>
-                <span className="font-semibold text-blue-600">{t('promo_retention_value')}</span>
               </div>
             </div>
           </div>

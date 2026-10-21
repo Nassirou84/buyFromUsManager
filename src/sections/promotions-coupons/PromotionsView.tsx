@@ -1,9 +1,21 @@
 import useLocales from '@/locales/use-locales';
 import React, { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/lucide-icon';
 import { PromoCode } from '@/types/marketing';
-import { INITIAL_PROMOS } from './data/mockPromos';
+import useGetPromoCodes, { GET_PROMO_CODES_QUERY_KEY } from '@/api/promo-code/get-promo-codes';
+import usePostPromoCode from '@/api/promo-code/post-promo-code';
+import usePatchPromoCode from '@/api/promo-code/patch-promo-code';
+import useDeletePromoCode from '@/api/promo-code/delete-promo-code';
+import {
+  buildDuplicatePayload,
+  buildPromoPayload,
+  isDuplicateCodeError,
+  mapApiPromo,
+  NEW_PROMO_TERMS,
+  PROMO_TYPES,
+} from './mapper';
 import { CreatePromoModal } from './modals/CreatePromoModal';
 import { PromoAnalyticsModal } from './modals/PromoAnalyticsModal';
 
@@ -11,59 +23,101 @@ const ITEMS_PER_PAGE = 5;
 
 export const PromotionsView: React.FC = () => {
   const { t } = useLocales();
+  const queryClient = useQueryClient();
 
-  const [promos, setPromos] = useState<PromoCode[]>(INITIAL_PROMOS);
+  const { data: apiPromos, isLoading, isError, refetch } = useGetPromoCodes();
+  const { mutate: postPromo, isPending: isCreating } = usePostPromoCode();
+  const { mutate: patchPromo, isPending: isUpdating } = usePatchPromoCode();
+  const { mutate: deletePromo } = useDeletePromoCode();
+
+  const promos = useMemo(() => (apiPromos ?? []).map((promo) => mapApiPromo(promo, t)), [apiPromos, t]);
+
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<PromoCode | null>(null);
   const [analyticsPromo, setAnalyticsPromo] = useState<PromoCode | null>(null);
 
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
 
-  const handleCopy = (code: string, id: string) => {
+  const handleCopy = (code: string, id: number) => {
     void navigator.clipboard.writeText(code);
     setCopiedId(id);
     toast.success(t('promo_code_copied', { code }));
     setTimeout(() => setCopiedId(null), 1800);
   };
 
-  const handleTogglePromoStatus = (id: string) => {
-    const target = promos.find((p) => p.id === id);
-    if (!target) return;
-    setPromos((prev) => prev.map((p) => (p.id === id ? { ...p, isActive: !p.isActive } : p)));
-    toast.success(t(target.isActive ? 'promo_deactivated' : 'promo_activated', { code: target.code }));
+  const refresh = () => queryClient.invalidateQueries({ queryKey: GET_PROMO_CODES_QUERY_KEY });
+
+  const handleTogglePromoStatus = (promo: PromoCode) => {
+    patchPromo(
+      { id: promo.id, data: { isActive: !promo.isActive } },
+      {
+        onSuccess: () => {
+          refresh();
+          toast.success(t(promo.isActive ? 'promo_deactivated' : 'promo_activated', { code: promo.code }));
+        },
+        onError: () => toast.error(t('promo_update_failed')),
+      }
+    );
   };
 
-  const handleSavePromo = (promo: PromoCode) => {
-    setPromos((prev) =>
-      prev.some((p) => p.id === promo.id) ? prev.map((p) => (p.id === promo.id ? promo : p)) : [promo, ...prev]
+  const handleSavePromo = (payload: ReturnType<typeof buildPromoPayload>) => {
+    if (editingPromo) {
+      patchPromo(
+        { id: editingPromo.id, data: payload },
+        {
+          onSuccess: () => {
+            refresh();
+            toast.success(t('promo_updated', { code: payload.code }));
+            setIsCreateOpen(false);
+            setEditingPromo(null);
+          },
+          onError: (error) =>
+            toast.error(t(isDuplicateCodeError(error) ? 'promo_code_exists' : 'promo_update_failed')),
+        }
+      );
+      return;
+    }
+    postPromo(
+      { ...payload, terms: NEW_PROMO_TERMS },
+      {
+        onSuccess: () => {
+          refresh();
+          toast.success(t('promo_created', { code: payload.code }));
+          setIsCreateOpen(false);
+        },
+        onError: (error) =>
+          toast.error(t(isDuplicateCodeError(error) ? 'promo_code_exists' : 'promo_create_failed')),
+      }
     );
-    setEditingPromo(null);
   };
 
   const handleDuplicatePromo = (promo: PromoCode) => {
     const copySuffix = Math.floor(Math.random() * 90 + 10);
-    const duplicated: PromoCode = {
-      ...promo,
-      id: `promo-${Date.now()}`,
-      code: `${promo.code}_${copySuffix}`,
-      campaignLabel: t('promo_copy_suffix', { label: promo.campaignLabel }),
-      currentClaims: 0,
-      revenueGenerated: 0,
-      validityStart: t('promo_today'),
-      isActive: true,
-    };
-    setPromos((prev) => [duplicated, ...prev]);
-    toast.success(t('promo_duplicated', { code: promo.code, copy: duplicated.code }));
+    const copyCode = `${promo.code}_${copySuffix}`;
+    postPromo(
+      buildDuplicatePayload(promo, copyCode, t('promo_copy_suffix', { label: promo.campaignLabel })),
+      {
+        onSuccess: () => {
+          refresh();
+          toast.success(t('promo_duplicated', { code: promo.code, copy: copyCode }));
+        },
+        onError: () => toast.error(t('promo_create_failed')),
+      }
+    );
   };
 
-  const handleDeletePromo = (id: string) => {
-    const target = promos.find((p) => p.id === id);
-    setPromos((prev) => prev.filter((p) => p.id !== id));
-    toast.success(t('promo_deleted', { code: target?.code ?? '' }));
+  const handleDeletePromo = (promo: PromoCode) => {
+    deletePromo(promo.id, {
+      onSuccess: () => {
+        refresh();
+        toast.success(t('promo_deleted', { code: promo.code }));
+      },
+      onError: () => toast.error(t('promo_delete_failed')),
+    });
   };
 
   const filteredPromos = useMemo(() => {
@@ -78,7 +132,7 @@ export const PromotionsView: React.FC = () => {
         statusFilter === 'all' ||
         (statusFilter === 'active' && p.isActive) ||
         (statusFilter === 'paused' && !p.isActive) ||
-        (statusFilter === 'expiring' && p.validityNote.toLowerCase().includes('expir'));
+        (statusFilter === 'expiring' && p.isExpiringSoon);
       return matchSearch && matchType && matchStatus;
     });
   }, [promos, searchFilter, typeFilter, statusFilter]);
@@ -95,6 +149,9 @@ export const PromotionsView: React.FC = () => {
   }, [currentPage, totalPages]);
 
   const activeCount = promos.filter((p) => p.isActive).length;
+  const pausedCount = promos.length - activeCount;
+  const expiringCount = promos.filter((p) => p.isActive && p.isExpiringSoon).length;
+  const totalClaims = promos.reduce((sum, p) => sum + p.currentClaims, 0);
 
   const exportCSV = () => {
     const headers = ['Code', 'Campaign', 'Type', 'Discount', 'Claims', 'Max Claims', 'Status'];
@@ -145,8 +202,8 @@ export const PromotionsView: React.FC = () => {
         </button>
       </div>
 
-      {/* Section 1: Strategic KPI Metric Cards (3-column Bento Style) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* Section 1: KPI Metric Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {/* Metric 1: Active Codes */}
         <div className="relative overflow-hidden p-6 bg-white dark:bg-[#131b2e] rounded-xl shadow-xs border border-[#e5eeff] dark:border-gray-800 flex flex-col justify-between group hover:shadow-md transition-shadow duration-200">
           <div>
@@ -170,10 +227,10 @@ export const PromotionsView: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 mt-2 text-[#565e74] dark:text-gray-400 text-xs">
                 <span className="px-1.5 py-0.5 bg-[#dae2fd] dark:bg-blue-950 text-[#004ac6] dark:text-blue-300 rounded font-semibold">
-                  3 {t('promo_expiring_soon')}
+                  {expiringCount} {t('promo_expiring_soon')}
                 </span>
                 <span className="text-gray-300 dark:text-gray-600">/</span>
-                <span>2 {t('promo_drafts_ready')}</span>
+                <span>{pausedCount} {t('promo_paused')}</span>
               </div>
             </div>
           </div>
@@ -195,9 +252,6 @@ export const PromotionsView: React.FC = () => {
               <div className="w-10 h-10 rounded-lg bg-[#eff4ff] dark:bg-gray-800 flex items-center justify-center text-[#004ac6] dark:text-blue-400">
                 <Icon name="trending_up" className="text-[22px]" />
               </div>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#dae2fd] dark:bg-blue-950 text-[#004ac6] dark:text-blue-300 text-xs font-semibold rounded">
-                <Icon name="north_east" className="text-[14px]" /> +18.4% MoM
-              </span>
             </div>
             <div className="flex flex-col">
               <span className="text-xs text-[#565e74] dark:text-gray-400 uppercase tracking-wider font-semibold mb-1">
@@ -205,71 +259,10 @@ export const PromotionsView: React.FC = () => {
               </span>
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl text-[#0b1c30] dark:text-white font-bold tracking-tight">
-                  3,842
+                  {totalClaims.toLocaleString()}
                 </span>
                 <span className="text-sm text-[#565e74] dark:text-gray-400">{t('promo_claims')}</span>
               </div>
-              <span className="text-xs text-[#565e74] dark:text-gray-400 mt-2">
-                92.4% {t('promo_checkout_rate')}
-              </span>
-            </div>
-          </div>
-
-          {/* SVG Ring Mini-Viz */}
-          <div className="mt-6 pt-2 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <svg className="w-8 h-8 -rotate-90 text-[#dce9ff] dark:text-gray-700" viewBox="0 0 36 36">
-                <path
-                  className="stroke-current fill-none stroke-[3.5]"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-                <path
-                  className="stroke-[#004ac6] fill-none stroke-[3.5]"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                  strokeDasharray="82, 100"
-                />
-              </svg>
-              <span className="text-xs text-[#0b1c30] dark:text-gray-200 font-medium">
-                82% {t('promo_repeat_customers')}
-              </span>
-            </div>
-            <span className="text-xs text-gray-400">{t('promo_target')}: 4,000</span>
-          </div>
-        </div>
-
-        {/* Metric 3: Promotional Revenue Impact */}
-        <div className="relative overflow-hidden p-6 bg-white dark:bg-[#131b2e] rounded-xl shadow-xs border border-[#e5eeff] dark:border-gray-800 flex flex-col justify-between group hover:shadow-md transition-shadow duration-200">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-10 h-10 rounded-lg bg-[#eff4ff] dark:bg-gray-800 flex items-center justify-center text-[#004ac6] dark:text-blue-400">
-                <Icon name="payments" className="text-[22px]" />
-              </div>
-              <span className="px-2 py-0.5 bg-[#eff4ff] dark:bg-gray-800 text-[#0b1c30] dark:text-gray-200 text-xs font-semibold rounded">
-                {t('promo_attributed_arr')}
-              </span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs text-[#565e74] dark:text-gray-400 uppercase tracking-wider font-semibold mb-1">
-                {t('promo_revenue_impact')}
-              </span>
-              <div className="flex items-baseline gap-1">
-                <span className="text-4xl text-[#0b1c30] dark:text-white font-bold tracking-tight">
-                  $248,600
-                </span>
-                <span className="text-lg text-gray-400 font-medium">.00</span>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5 text-xs text-[#0b1c30] dark:text-gray-300">
-                <span className="font-semibold text-[#004ac6] dark:text-blue-400">$320 {t('promo_avg_cart')}</span>
-                <span className="text-gray-400">{t('promo_vs_baseline', { amount: '$240' })}</span>
-                <span className="text-[#004ac6] dark:text-blue-400 font-bold">(+33%)</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 pt-2">
-            <div className="w-full bg-[#eff4ff] dark:bg-gray-700 h-2 rounded-full overflow-hidden flex">
-              <div className="bg-[#004ac6] h-full w-[72%]"></div>
-              <div className="bg-[#dae2fd] dark:bg-blue-900 h-full w-[28%]"></div>
             </div>
           </div>
         </div>
@@ -303,10 +296,11 @@ export const PromotionsView: React.FC = () => {
               className="h-10 px-3.5 pr-8 bg-[#eff4ff] dark:bg-gray-800 text-xs font-medium text-[#0b1c30] dark:text-gray-200 rounded-lg appearance-none focus:outline-none focus:ring-1 focus:ring-[#004ac6] cursor-pointer"
             >
               <option value="all">{t('promo_all_types')}</option>
-              <option value="percentage">{t('promo_type_percentage')}</option>
-              <option value="fixed">{t('promo_type_fixed')}</option>
-              <option value="shipping">{t('promo_type_shipping')}</option>
-              <option value="gift">{t('promo_type_gift')}</option>
+              {PROMO_TYPES.map((promoType) => (
+                <option key={promoType} value={promoType}>
+                  {t(`promo_type_${promoType}`)}
+                </option>
+              ))}
             </select>
             <Icon name="expand_more" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none text-[18px]" />
           </div>
@@ -346,6 +340,27 @@ export const PromotionsView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {isLoading && (
+        <div className="p-6 text-sm text-[#565e74] dark:text-slate-400">{t('promos_loading')}</div>
+      )}
+
+      {isError && (
+        <div className="p-6 mb-6 bg-white dark:bg-[#131b2e] rounded-xl border border-[#e5eeff] dark:border-gray-800 flex items-center justify-between gap-4">
+          <span className="text-sm text-red-600">{t('promos_load_failed')}</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="px-4 py-2 text-xs font-semibold text-[#004ac6] dark:text-blue-400 hover:bg-[#eff4ff] dark:hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            {t('promos_retry')}
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !isError && promos.length === 0 && (
+        <div className="p-6 text-sm text-[#565e74] dark:text-slate-400">{t('promos_empty')}</div>
+      )}
 
       {/* Active Promo Codes Table */}
       <div className="bg-white dark:bg-[#131b2e] rounded-xl shadow-xs border border-[#e5eeff] dark:border-gray-800 overflow-hidden mb-6">
@@ -463,7 +478,7 @@ export const PromotionsView: React.FC = () => {
                         </span>
                         <span
                           className={`text-[11px] ${
-                            promo.validityNote.toLowerCase().includes('ends')
+                            promo.isExpiringSoon
                               ? 'text-[#943700] dark:text-amber-400 font-semibold'
                               : 'text-gray-500'
                           }`}
@@ -478,7 +493,7 @@ export const PromotionsView: React.FC = () => {
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input
                           checked={promo.isActive}
-                          onChange={() => handleTogglePromoStatus(promo.id)}
+                          onChange={() => handleTogglePromoStatus(promo)}
                           className="sr-only peer"
                           type="checkbox"
                         />
@@ -523,7 +538,7 @@ export const PromotionsView: React.FC = () => {
                           <Icon name="content_copy" className="text-[19px]" />
                         </button>
                         <button
-                          onClick={() => handleDeletePromo(promo.id)}
+                          onClick={() => handleDeletePromo(promo)}
                           className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
                           title={t('promo_delete')}
                         >
@@ -588,6 +603,7 @@ export const PromotionsView: React.FC = () => {
             setEditingPromo(null);
           }}
           onSave={handleSavePromo}
+          isSaving={isCreating || isUpdating}
           initialData={editingPromo}
         />
       )}

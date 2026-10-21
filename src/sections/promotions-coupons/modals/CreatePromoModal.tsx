@@ -3,11 +3,13 @@ import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { Icon } from '@/components/lucide-icon';
 import { PromoCode, PromoType } from '@/types/marketing';
+import { buildPromoPayload, PROMO_TYPES, toDateInputValue } from '../mapper';
 
 interface CreatePromoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (promo: PromoCode) => void;
+  onSave: (payload: ReturnType<typeof buildPromoPayload>) => void;
+  isSaving?: boolean;
   initialData?: PromoCode | null;
 }
 
@@ -15,6 +17,7 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  isSaving = false,
   initialData,
 }) => {
   const { t } = useLocales();
@@ -28,8 +31,10 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
       : '500'
   );
   const [minSpend, setMinSpend] = useState<string>(
-    initialData?.minSpend !== undefined ? String(initialData.minSpend) : '100.00'
+    initialData ? String(initialData.minSpend ?? '') : '100.00'
   );
+  const [startsAt, setStartsAt] = useState(toDateInputValue(initialData?.startsAt));
+  const [expiresAt, setExpiresAt] = useState(toDateInputValue(initialData?.expiresAt));
   const [immediateActivation, setImmediateActivation] = useState(initialData?.isActive ?? true);
 
   if (!isOpen) return null;
@@ -48,41 +53,19 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
       return;
     }
 
-    const discountDisplay =
-      type === 'percentage'
-        ? t('promo_discount_percentage', { value: discountValue })
-        : type === 'fixed'
-          ? t('promo_discount_fixed', { value: discountValue })
-          : type === 'shipping'
-            ? t('promo_discount_shipping')
-            : t('promo_discount_gift');
-
-    const newPromo: PromoCode = {
-      id: initialData?.id || `promo-${Date.now()}`,
-      code: code.trim().toUpperCase(),
-      campaignLabel: campaignLabel.trim() || t('promo_default_campaign'),
-      type,
-      discountValue: Number(discountValue),
-      discountDisplay,
-      ruleDescription:
-        Number(minSpend) > 0
-          ? t('promo_rule_min_cart', { amount: Number(minSpend).toFixed(2) })
-          : t('promo_rule_no_min'),
-      minSpend: Number(minSpend) || 0,
-      currentClaims: initialData?.currentClaims || 0,
-      maxClaims: maxClaims ? Number(maxClaims) : null,
-      validityStart: initialData?.validityStart || t('promo_today'),
-      validityEnd: null,
-      validityNote: t('promo_validity_active'),
-      isActive: immediateActivation,
-      revenueGenerated: initialData?.revenueGenerated || 0,
-      conversionRate: initialData?.conversionRate || 92.0,
-      tags: ['Live', 'Checkout'],
-    };
-
-    onSave(newPromo);
-    toast.success(t(initialData ? 'promo_updated' : 'promo_created', { code: newPromo.code }));
-    onClose();
+    onSave(
+      buildPromoPayload({
+        code,
+        campaignLabel,
+        type,
+        discountValue,
+        maxClaims,
+        minSpend,
+        startsAt,
+        expiresAt,
+        isActive: immediateActivation,
+      })
+    );
   };
 
   return (
@@ -162,10 +145,11 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
                 onChange={(e) => setType(e.target.value as PromoType)}
                 className="h-10 px-3 text-sm text-[#0b1c30] dark:text-white bg-[#eff4ff] dark:bg-gray-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#004ac6]"
               >
-                <option value="percentage">{t('promo_type_percentage')}</option>
-                <option value="fixed">{t('promo_type_fixed')}</option>
-                <option value="shipping">{t('promo_type_shipping')}</option>
-                <option value="gift">{t('promo_type_gift')}</option>
+                {PROMO_TYPES.map((promoType) => (
+                  <option key={promoType} value={promoType}>
+                    {t(`promo_type_${promoType}`)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -181,6 +165,7 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
                 required
                 type="number"
                 min="1"
+                max={type === 'percentage' ? 100 : undefined}
               />
             </div>
           </div>
@@ -211,6 +196,34 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
                 placeholder="100.00"
                 type="number"
                 step="0.01"
+              />
+            </div>
+          </div>
+
+          {/* Validity Window */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-[#0b1c30] dark:text-gray-200">
+                {t('promo_field_starts_at')}
+              </label>
+              <input
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                className="w-full h-10 px-3 text-sm text-[#0b1c30] dark:text-white bg-[#eff4ff] dark:bg-gray-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#004ac6]"
+                type="date"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-[#0b1c30] dark:text-gray-200">
+                {t('promo_field_expires_at')}
+              </label>
+              <input
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                min={startsAt || undefined}
+                className="w-full h-10 px-3 text-sm text-[#0b1c30] dark:text-white bg-[#eff4ff] dark:bg-gray-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#004ac6]"
+                type="date"
               />
             </div>
           </div>
@@ -246,8 +259,9 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
               {t('cancel')}
             </button>
             <button
-              className="px-5 py-2.5 bg-[#004ac6] text-white text-xs font-semibold rounded-lg shadow-sm hover:bg-[#2563eb] transition-colors"
+              className="px-5 py-2.5 bg-[#004ac6] text-white text-xs font-semibold rounded-lg shadow-sm hover:bg-[#2563eb] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               type="submit"
+              disabled={isSaving}
             >
               {t(initialData ? 'promo_save_changes' : 'promo_deploy')}
             </button>
