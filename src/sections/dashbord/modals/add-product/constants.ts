@@ -6,9 +6,9 @@ export const STEP_ORDER: Step[] = ['source', 'review', 'extras'];
 export const MARKETPLACE_LABELS: Record<Marketplace, string> = {
   amazon: 'AMAZON US',
   ebay: 'EBAY LUX',
-  aliexpress: 'ALI DIRECT',
+  bestbuy: 'BESTBUY US',
   walmart: 'WALMART US',
-  direct: 'DIRECT ATELIER',
+  other: 'DIRECT ATELIER',
 };
 
 export const SECTION_CLASS =

@@ -1,7 +1,7 @@
 import useLocales from '@/locales/use-locales';
 import React, { useState } from 'react';
 import { Icon } from '@/components/lucide-icon';
-import { DropshipProduct } from '../../types';
+import { DropshipProduct } from '../types';
 
 interface StorefrontPreviewModalProps {
   isOpen: boolean;

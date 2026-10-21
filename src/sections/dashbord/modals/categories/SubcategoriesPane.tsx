@@ -16,11 +16,11 @@ interface SubcategoriesPaneProps {
   isAdding: boolean;
   onToggleAdding: (open: boolean) => void;
   onAdd: (values: NewSubcategoryValues) => void;
-  editingId: string | null;
-  onStartEdit: (id: string) => void;
-  onSaveEdit: (id: string, updatedSub: Partial<SubCategory>) => void;
+  editingId: number | null;
+  onStartEdit: (id: number) => void;
+  onSaveEdit: (id: number, updatedSub: Partial<SubCategory>) => void;
   onCancelEdit: () => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: number) => void;
   onClose: () => void;
 }
 

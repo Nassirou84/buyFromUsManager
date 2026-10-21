@@ -47,7 +47,7 @@ export const scrapeProduct = async (url: string): Promise<ScrapedProduct> => {
       title: 'Silk Touch Satin Pajama Set',
       brand: 'Suzhou Silk',
       description: '100% Mulberry Silk Blend Luxury Sleepwear.',
-      source: 'aliexpress',
+      source: 'other',
       sourceId: '#100500982',
       supplier: 'Suzhou Silk Crafts Co.',
       sourceCost: 42,

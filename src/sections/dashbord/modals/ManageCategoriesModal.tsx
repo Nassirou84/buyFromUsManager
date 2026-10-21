@@ -31,12 +31,12 @@ export const ManageCategoriesModal: React.FC<ManageCategoriesModalProps> = ({
   const { mutateAsync: postCategory } = usePostCategory();
 
   const [categories, setCategories] = useState<Category[]>(categoriesData ?? []);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories[0]?.id || '');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | ''>(categories[0]?.id || '');
   const [categorySearch, setCategorySearch] = useState('');
   const [subcategorySearch, setSubcategorySearch] = useState('');
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [isAddingSubcategory, setIsAddingSubcategory] = useState(false);
-  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [editingSubId, setEditingSubId] = useState<number | null>(null);
 
   // categoriesData loads asynchronously, so sync local state once it arrives.
   useEffect(() => {
@@ -85,7 +85,7 @@ export const ManageCategoriesModal: React.FC<ManageCategoriesModalProps> = ({
     });
   };
 
-  const handleDeleteCategory = (catId: string, e: React.MouseEvent) => {
+  const handleDeleteCategory = (catId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (categories.length <= 1) {
       alert(t('mustKeepOneCategory'));
@@ -119,15 +119,15 @@ export const ManageCategoriesModal: React.FC<ManageCategoriesModalProps> = ({
     });
   };
 
-  const handleDeleteSubcategory = (subId: string) => {
+  const handleDeleteSubcategory = (subId: number) => {
     if (selectedCategory && window.confirm(t('confirmDeleteSubcategory'))) {
       updateSelectedSubs((subs) => subs.filter((s) => s.id !== subId));
     }
   };
 
-  const handleSaveEditSubcategory = (id: string, updatedSub: Partial<SubCategory>) => {
+  const handleSaveEditSubcategory = (id: number, updatedSub: Partial<SubCategory>) => {
     const { title, description, markup } = updatedSub;
-    updateSubcategory({ subcategoryId: Number(id), data: { title, description, markup } })
+    updateSubcategory({ subcategoryId: id, data: { title, description, markup } })
       .then(() => {
         toast.success(t('subcategoryUpdated'));
         setEditingSubId(null);

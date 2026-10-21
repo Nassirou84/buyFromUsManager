@@ -69,7 +69,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         supplierInfo: toMarketplace(data.seller),
         productCondition: toCondition(data.productCondition),
         usdPrice: Math.ceil(data.usdPrice ?? 0),
-        available: data.available ?? true,
+        available: data.isAvailable ?? true,
         acceptReturn: data.acceptReturn ?? false,
         sellerChoice: data.sellerChoice ?? false,
         primeDelivery: data.primeDelivery ?? false,
@@ -78,9 +78,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         overallRating: data.overallRating ?? 0,
         overallRatingsCounts: data.overallRatingsCounts ?? 0,
         images: (data.photos ?? [])
-          .map((p) => p.url ?? p.src ?? p)
-          .filter((u) => typeof u === 'string')
-          .map((url) => ({ url })),
+          .filter((p) => typeof p.url === 'string')
+          .map((p) => ({ url: p.url })),
         details: (data.details ?? []).map((d: { type?: string; value?: string }) => ({ name: String(d.type ?? ''), value: String(d.value ?? '') })),
         features: data.features ?? [],
         variants: (data.variants ?? []).map((v, i) => ({

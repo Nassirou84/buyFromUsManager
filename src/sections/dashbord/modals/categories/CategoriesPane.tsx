@@ -9,14 +9,14 @@ import { AddCategoryForm, NewCategoryValues } from './AddCategoryForm';
 interface CategoriesPaneProps {
   categories: Category[];
   totalCount?: number;
-  selectedCategoryId: string;
+  selectedCategoryId: number | '';
   search: string;
   onSearchChange: (value: string) => void;
   isAdding: boolean;
   onToggleAdding: (open: boolean) => void;
-  onSelect: (id: string) => void;
+  onSelect: (id: number) => void;
   onAdd: (values: NewCategoryValues) => void;
-  onDelete: (id: string, e: React.MouseEvent) => void;
+  onDelete: (id: number, e: React.MouseEvent) => void;
 }
 
 export const CategoriesPane: React.FC<CategoriesPaneProps> = ({
