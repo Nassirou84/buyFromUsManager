@@ -36,7 +36,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 }) => {
   const { t } = useLocales();
   const { values, setField, patch, reset } = useProductForm();
-  const { mutateAsync: postProduct } = usePostProduct();
+  const { mutateAsync: postProduct, isPending: isSaving } = usePostProduct();
 
   const [step, setStep] = useState<Step>(initialMode === 'manual' ? 'review' : 'source');
   const [isScraping, setIsScraping] = useState(false);
@@ -82,11 +82,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           .map((p) => ({ url: p.url })),
         details: (data.details ?? []).map((d: { type?: string; value?: string }) => ({ name: String(d.type ?? ''), value: String(d.value ?? '') })),
         features: data.features ?? [],
-        variants: (data.variants ?? []).map((v, i) => ({
+        variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number; image?: string }, i: number) => ({
           id: `variant-${Date.now()}-${i}`,
           title: String(v.title ?? v.name ?? ''),
           price: Number(v.price ?? data.usdPrice ?? 0),
-          image: '',
+          image: typeof v.image === 'string' ? v.image : '',
         })),
       });
       setDataFromScrape(data);
@@ -114,6 +114,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
     const formData = buildProductFormData(values);
     try {
       await postProduct(formData);
@@ -150,11 +151,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             overallRatingsCounts: data.overallRatingsCounts ?? 0,
             details: (data.details ?? []).map((d: { type?: string; value?: string }) => ({ name: String(d.type ?? ''), value: String(d.value ?? '') })),
             features: data.features ?? [],
-            variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number }, i: number) => ({
+            variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number; image?: string }, i: number) => ({
               id: `variant-${Date.now()}-${i}`,
               title: String(v.title ?? v.name ?? ''),
               price: Number(v.price ?? data.usdPrice ?? 0),
-              image: '',
+              image: typeof v.image === 'string' ? v.image : '',
             })),
           });
 
@@ -177,11 +178,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             customerSays: data.customerSays ?? '',
             details: (data.details ?? []).map((d: { type?: string; value?: string }) => ({ name: String(d.type ?? ''), value: String(d.value ?? '') })),
             features: data.features ?? [],
-            variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number }, i: number) => ({
+            variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number; image?: string }, i: number) => ({
               id: `variant-${Date.now()}-${i}`,
               title: String(v.title ?? v.name ?? ''),
               price: Number(v.price ?? data.usdPrice ?? 0),
-              image: '',
+              image: typeof v.image === 'string' ? v.image : '',
             })),
           });
 
@@ -230,7 +231,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         )}
 
         {step === 'extras' && (
-          <ExtrasStep values={values} setField={setField} onBack={goBack} onSave={handleSave} onCancel={onClose} />
+          <ExtrasStep values={values} setField={setField} onBack={goBack} onSave={handleSave} onCancel={onClose} isSaving={isSaving} />
         )}
       </div>
     </div>

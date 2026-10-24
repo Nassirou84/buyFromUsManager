@@ -1,5 +1,6 @@
 import React from 'react';
 import useLocales from '@/locales/use-locales';
+import { Icon } from '@/components/lucide-icon';
 import { PRIMARY_BTN_CLASS, SECONDARY_BTN_CLASS } from './constants';
 
 interface StepFooterProps {
@@ -7,10 +8,11 @@ interface StepFooterProps {
   onCancel: () => void;
   submitLabel: string;
   submitDisabled?: boolean;
+  submitLoading?: boolean;
 }
 
 // Back / Cancel / submit row shared by the form steps; the submit button triggers the parent <form>.
-export const StepFooter: React.FC<StepFooterProps> = ({ onBack, onCancel, submitLabel, submitDisabled }) => {
+export const StepFooter: React.FC<StepFooterProps> = ({ onBack, onCancel, submitLabel, submitDisabled, submitLoading = false }) => {
   const { t } = useLocales();
 
   return (
@@ -26,7 +28,13 @@ export const StepFooter: React.FC<StepFooterProps> = ({ onBack, onCancel, submit
         <button type="button" onClick={onCancel} className={SECONDARY_BTN_CLASS}>
           {t('cancel')}
         </button>
-        <button type="submit" disabled={submitDisabled} className={PRIMARY_BTN_CLASS}>
+        <button
+          type="submit"
+          disabled={submitDisabled || submitLoading}
+          aria-busy={submitLoading}
+          className={`${PRIMARY_BTN_CLASS} inline-flex items-center justify-center gap-1.5 disabled:cursor-not-allowed`}
+        >
+          {submitLoading && <Icon name="sync" className="text-[16px] animate-spin" />}
           {submitLabel}
         </button>
       </div>
