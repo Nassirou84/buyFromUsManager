@@ -92,8 +92,19 @@ export function buildProductFormData(values: ProductFormValues): FormData {
   });
   fd.append('details', JSON.stringify(details));
   fd.append('features', JSON.stringify(features));
-  // Variant images are file-only (scraped urls are ignored): metadata as JSON, files as `variantImages[<index>]`.
-  fd.append('variants', JSON.stringify(variants.map(({ id, title, price }) => ({ id, title, price }))));
+  // Variant metadata as JSON, uploaded files as `variantImages[<index>]`. Scraped remote urls travel in the JSON
+  // `image` field; `blob:` previews are local-only and must not be sent.
+  fd.append(
+    'variants',
+    JSON.stringify(
+      variants.map(({ id, title, price, image, imageFile }) => ({
+        id,
+        title,
+        price,
+        ...(!imageFile && image && !image.startsWith('blob:') ? { image } : {}),
+      })),
+    ),
+  );
   variants.forEach((v, i) => {
     if (v.imageFile) fd.append(`variantImages[${i}]`, v.imageFile, v.imageFile.name);
   });

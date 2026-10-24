@@ -47,7 +47,8 @@ export const ExtrasStep: React.FC<ExtrasStepProps> = ({ values, setField, onBack
         onBack={onBack}
         onCancel={onCancel}
         submitLabel={submitLabel ?? t('save_publish_to_catalog')}
-        submitDisabled={!values.title.trim() || isSaving}
+        submitDisabled={!values.title.trim()}
+        submitLoading={isSaving}
       />
     </form>
   );
