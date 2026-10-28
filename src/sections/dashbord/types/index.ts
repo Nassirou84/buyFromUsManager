@@ -2,7 +2,7 @@ export type Marketplace = 'amazon' | 'ebay' | 'bestbuy' | 'walmart' | 'other';
 
 export type SyncStatus = 'synced' | 'price_shifted' | 'depleted' | 'paused' | 'draft';
 
-export type ProductCondition = 'new' | 'used' | 'reconditioned';
+export type ProductCondition = 'new' | 'used' | 'refurbished';
 
 export interface ProductVariant {
   id: string;

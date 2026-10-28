@@ -15,7 +15,7 @@ import { ProductFormValues, useProductForm } from '../add-product/use-product-fo
 
 const EDIT_STEPS: Step[] = ['review', 'extras'];
 const MARKETPLACES: Marketplace[] = ['amazon', 'ebay', 'bestbuy', 'walmart', 'other'];
-const CONDITIONS: ProductCondition[] = ['new', 'used', 'reconditioned'];
+const CONDITIONS: ProductCondition[] = ['new', 'used', 'refurbished'];
 
 // Seeds the shared product form from an existing catalog product (no scraping involved).
 const toFormValues = (product: Product): Partial<ProductFormValues> => ({

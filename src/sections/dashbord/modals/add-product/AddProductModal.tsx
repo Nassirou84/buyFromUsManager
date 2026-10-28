@@ -18,7 +18,7 @@ const MARKETPLACES = Object.keys(MARKETPLACE_LABELS) as Marketplace[];
 const toMarketplace = (seller?: string): Marketplace =>
   MARKETPLACES.find((m) => m === seller?.toLowerCase()) ?? 'other';
 const toCondition = (condition?: string): ProductCondition =>
-  (['new', 'used', 'reconditioned'] as const).find((c) => c === condition?.toLowerCase()) ?? 'new';
+  (['new', 'used', 'refurbished'] as const).find((c) => c === condition?.toLowerCase()) ?? 'new';
 
 // 'scrape' opens on the link step, 'manual' jumps straight to an empty form.
 export type AddProductModalMode = 'scrape' | 'manual';

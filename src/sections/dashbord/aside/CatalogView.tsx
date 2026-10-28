@@ -24,6 +24,7 @@ import { useGetProductSummary, GET_SUMMARY_QUERY_KEY } from '@/api/product/get-s
 import useGetAllProducts, { GetAllProductsFilters } from '@/api/product/get-all-products';
 import useUpdatePrice, { updatePrice as updatePriceRequest } from '@/api/product/update-price';
 import { useBulkRelistToStore } from '@/api/product/bulk-relist-to-store';
+import { useBulkDelistFromStore } from '@/api/product/bulk-delist-from-store';
 import { Product } from '@/types/product';
 
 interface CatalogViewProps {
@@ -46,6 +47,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const queryClient = useQueryClient();
   const { mutate: updatePrice } = useUpdatePrice();
   const { mutate: relistToStore } = useBulkRelistToStore();
+  const { mutate: delistFromStore } = useBulkDelistFromStore();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
@@ -196,7 +198,30 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   };
 
   const handleDelist = () => {
-    console.log('delist', selectedIds);
+    const uids = selectedIds;
+    if (uids.length === 0) return;
+
+    delistFromStore(uids, {
+      onSuccess: () => {
+        // Reflect the change in the cached listing without waiting for a refetch
+        queryClient.setQueriesData<{ products: Product[]; totalItems: number }>(
+          { queryKey: ['GET_ALL_PRODUCTS'] },
+          (old) => old && {
+            ...old,
+            products: old.products.map((p) =>
+              p.uid && uids.includes(p.uid) ? { ...p, isAvailable: false } : p
+            ),
+          }
+        );
+        queryClient.invalidateQueries({ queryKey: ['GET_ALL_PRODUCTS'] });
+        queryClient.invalidateQueries({ queryKey: GET_SUMMARY_QUERY_KEY });
+        setSelectedIds([]);
+        toast.success(t('delist_success', { count: uids.length }));
+      },
+      onError: () => {
+        toast.error(t('delist_failed'));
+      },
+    });
   };
 
   const handleRelist = () => {
