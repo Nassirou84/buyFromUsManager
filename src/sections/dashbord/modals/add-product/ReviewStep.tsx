@@ -130,7 +130,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
             options={[
               { value: 'new', label: t('condition_new') },
               { value: 'used', label: t('condition_used') },
-              { value: 'reconditioned', label: t('condition_reconditioned') },
+              { value: 'refurbished', label: t('condition_reconditioned') },
             ]}
           />
 
