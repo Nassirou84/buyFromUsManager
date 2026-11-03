@@ -7,7 +7,6 @@ export interface NewDriverPayload {
   firstName: string;
   lastName: string;
   email: string;
-  password: string;
 }
 
 interface AddDriverModalProps {
@@ -29,32 +28,17 @@ export const AddDriverModal: React.FC<AddDriverModalProps> = ({
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [repeatPassword, setRepeatPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showRepeat, setShowRepeat] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
 
-  const hasMinLength = password.length >= 8;
-  const passwordsMatch = password.length > 0 && password === repeatPassword;
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const canSubmit =
-    !!firstName.trim() &&
-    !!lastName.trim() &&
-    isEmailValid &&
-    hasMinLength &&
-    passwordsMatch;
+  const canSubmit = !!firstName.trim() && !!lastName.trim() && isEmailValid;
 
   const handleClose = () => {
     setFirstName('');
     setLastName('');
     setEmail('');
-    setPassword('');
-    setRepeatPassword('');
-    setShowPassword(false);
-    setShowRepeat(false);
     setErrorMsg('');
     onClose();
   };
@@ -67,20 +51,11 @@ export const AddDriverModal: React.FC<AddDriverModalProps> = ({
       setErrorMsg(t('please_enter_a_valid_email_address'));
       return;
     }
-    if (!hasMinLength) {
-      setErrorMsg(t('pw_err_min_length'));
-      return;
-    }
-    if (!passwordsMatch) {
-      setErrorMsg(t('pw_err_mismatch'));
-      return;
-    }
 
     onSubmit?.({
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       email: email.trim(),
-      password,
     });
   };
 
@@ -151,52 +126,9 @@ export const AddDriverModal: React.FC<AddDriverModalProps> = ({
             containerClassName="mb-0"
           />
 
-          <Input
-            id="add-driver-password"
-            label={t('user_password')}
-            type={showPassword ? 'text' : 'password'}
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={t('min_8_chars')}
-            containerClassName="mb-0"
-            rightIcon={
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer flex items-center"
-              >
-                <Icon name={showPassword ? 'visibility_off' : 'visibility'} className="text-[18px]" />
-              </button>
-            }
-          />
-
-          <div className="flex flex-col gap-1">
-            <Input
-              id="add-driver-repeat-password"
-              label={t('user_repeat_password')}
-              type={showRepeat ? 'text' : 'password'}
-              required
-              value={repeatPassword}
-              onChange={(e) => setRepeatPassword(e.target.value)}
-              containerClassName="mb-0"
-              rightIcon={
-                <button
-                  type="button"
-                  onClick={() => setShowRepeat(!showRepeat)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer flex items-center"
-                >
-                  <Icon name={showRepeat ? 'visibility_off' : 'visibility'} className="text-[18px]" />
-                </button>
-              }
-            />
-            {repeatPassword && (
-              <span
-                className={`text-[11px] font-medium mt-0.5 ${passwordsMatch ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}
-              >
-                {passwordsMatch ? t('pw_match') : t('pw_no_match')}
-              </span>
-            )}
+          <div className="flex items-start gap-2 p-3 bg-[#eff4ff] dark:bg-slate-800/60 rounded-xl text-[12px] text-[#565e74] dark:text-slate-300">
+            <Icon name="mail" className="text-[18px] text-[#004ac6] dark:text-blue-400 shrink-0" />
+            <span>{t('fleet_driver_credentials_hint')}</span>
           </div>
 
           {/* Footer buttons */}

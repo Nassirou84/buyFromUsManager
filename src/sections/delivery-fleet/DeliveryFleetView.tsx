@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Icon } from '@/components/lucide-icon';
 import { Courier, CourierStatus, DispatchOrder, RouteStop } from './types';
 import { AddDriverModal, NewDriverPayload } from './modals/AddDriverModal';
+import useCreateDriver from '@/api/user/create-driver';
 
 interface DeliveryFleetViewProps {
   couriers: Courier[];
@@ -55,6 +56,7 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
   onUpdateDispatchOrders,
 }) => {
   const { t } = useLocales();
+  const { mutate: createDriver, isPending: isCreatingDriver } = useCreateDriver();
   const [selectedCourierId, setSelectedCourierId] = useState<string>(couriers[0]?.id || '');
   const [activeRosterFilter, setActiveRosterFilter] = useState<RosterFilter>('All');
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
@@ -141,24 +143,31 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
 
   const handleAddDriver = (payload: NewDriverPayload) => {
     const name = `${payload.firstName} ${payload.lastName}`.trim();
-    onUpdateCouriers([
-      ...couriers,
-      {
-        id: `courier-${Date.now()}`,
-        name,
-        vehicleType: 'electric_car',
-        vehicleNumber: `Van #SF-${Math.floor(10 + Math.random() * 90)}`,
-        zone: 'Abidjan / SF Hub',
-        status: 'Idle at Hub',
-        currentStops: 0,
-        maxStops: 12,
-        batteryPercent: 100,
-        nextStopEta: t('fleet_available_for_assignment'),
-        currentStopNumber: 0,
+    createDriver(payload, {
+      onSuccess: () => {
+        onUpdateCouriers([
+          ...couriers,
+          {
+            id: `courier-${Date.now()}`,
+            name,
+            vehicleType: 'electric_car',
+            vehicleNumber: `Van #SF-${Math.floor(10 + Math.random() * 90)}`,
+            zone: 'Abidjan / SF Hub',
+            status: 'Idle at Hub',
+            currentStops: 0,
+            maxStops: 12,
+            batteryPercent: 100,
+            nextStopEta: t('fleet_available_for_assignment'),
+            currentStopNumber: 0,
+          },
+        ]);
+        setIsAddDriverOpen(false);
+        toast.success(t('fleet_toast_courier_added', { name }));
       },
-    ]);
-    setIsAddDriverOpen(false);
-    toast.success(t('fleet_toast_courier_added', { name }));
+      onError: () => {
+        toast.error(t('fleet_driver_create_failed'));
+      },
+    });
   };
 
   const filteredCouriers = couriers.filter((c) => matchesFilter(c, activeRosterFilter));
@@ -201,6 +210,7 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
         isOpen={isAddDriverOpen}
         onClose={() => setIsAddDriverOpen(false)}
         onSubmit={handleAddDriver}
+        isSubmitting={isCreatingDriver}
       />
 
       {/* Operational header & real-time pulse */}

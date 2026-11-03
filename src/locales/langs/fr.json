@@ -1162,6 +1162,8 @@
   "fleet_add_driver_subtitle": "Créez un compte chauffeur pour la flotte",
   "fleet_create_driver": "Créer le chauffeur",
   "fleet_creating_driver": "Création...",
+  "fleet_driver_credentials_hint": "Le chauffeur reçoit son e-mail de connexion et un mot de passe temporaire par e-mail dès la création du compte.",
+  "fleet_driver_create_failed": "Impossible de créer le chauffeur. Veuillez réessayer.",
   "fleet_auto_assign": "Affectation auto. des lots ({{count}})",
   "fleet_optimizing": "Optimisation multi-arrêts...",
   "fleet_kpi_on_duty": "Coursiers en service",

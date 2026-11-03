@@ -1155,6 +1155,8 @@
   "fleet_add_driver_subtitle": "Create a driver account for the fleet",
   "fleet_create_driver": "Create driver",
   "fleet_creating_driver": "Creating...",
+  "fleet_driver_credentials_hint": "The driver receives their login email and a temporary password by email once the account is created.",
+  "fleet_driver_create_failed": "Could not create the driver. Please try again.",
   "fleet_auto_assign": "Auto-Assign Batches ({{count}})",
   "fleet_optimizing": "Optimizing Multi-Drop...",
   "fleet_kpi_on_duty": "Couriers on Duty",
