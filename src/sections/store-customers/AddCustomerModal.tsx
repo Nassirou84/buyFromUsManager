@@ -82,6 +82,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ isOpen, onCl
       },
       crmNotes: t('customers_new_crm_note'),
       loyaltyPoints: 100,
+      addresses: [],
       orders: [],
     });
     toast.success(t('customers_toast_added', { name }));

@@ -8,13 +8,14 @@ import { ADD_LINK_CLASS, EMPTY_CLASS, REMOVE_BTN_CLASS, SECTION_CLASS, SECTION_T
 interface VariantsSectionProps {
   variants: ProductVariant[];
   defaultPrice: number;
+  sourceCost: number;
   className?: string;
   onChange: (variants: ProductVariant[]) => void;
 }
 
 const newId = () => `var-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-export const VariantsSection: React.FC<VariantsSectionProps> = ({ variants, defaultPrice, className = '', onChange }) => {
+export const VariantsSection: React.FC<VariantsSectionProps> = ({ variants, defaultPrice, sourceCost, className = '', onChange }) => {
   const { t } = useLocales();
   const fileRef = useRef<HTMLInputElement>(null);
   const imageTarget = useRef<string | null>(null);
@@ -32,11 +33,26 @@ export const VariantsSection: React.FC<VariantsSectionProps> = ({ variants, defa
     update(id, { image: URL.createObjectURL(file), imageFile: file });
   };
 
+  const clearImage = (id: string) => {
+    const previous = variants.find((v) => v.id === id)?.image;
+    if (previous?.startsWith('blob:')) URL.revokeObjectURL(previous);
+    update(id, { image: '', imageFile: undefined });
+  };
+
   const handleClearAll = () => {
     variants.forEach((v) => {
       if (v.image?.startsWith('blob:')) URL.revokeObjectURL(v.image);
     });
     onChange([]);
+  };
+
+  // Scale each variant by the product's markup (retail price over source cost), applied to
+  // the original scraped source price so recalculation stays idempotent. Variants keep their
+  // relative differences while fitting the estimated margin.
+  const markupMultiplier = sourceCost > 0 ? defaultPrice / sourceCost : 0;
+  const handleRecalculatePrices = () => {
+    if (markupMultiplier <= 0) return;
+    onChange(variants.map((v) => ({ ...v, price: Math.round((v.sourcePrice ?? v.price) * markupMultiplier) })));
   };
 
   return (
@@ -71,21 +87,33 @@ export const VariantsSection: React.FC<VariantsSectionProps> = ({ variants, defa
           key={v.id}
           className="flex items-start gap-3 p-2.5 bg-[#f8f9ff] dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700"
         >
-          <button
-            type="button"
-            onClick={() => {
-              imageTarget.current = v.id;
-              fileRef.current?.click();
-            }}
-            aria-label={t('upload_variant_image')}
-            className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-dashed border-[#c3c6d7] dark:border-slate-600 bg-white dark:bg-slate-900 flex items-center justify-center text-[#737686] cursor-pointer"
-          >
-            {v.image ? (
-              <img src={v.image} alt={v.title} className="w-full h-full object-cover" />
-            ) : (
-              <Icon name="upload_file" className="text-[22px]" />
+          <div className="relative w-16 h-16 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                imageTarget.current = v.id;
+                fileRef.current?.click();
+              }}
+              aria-label={t('upload_variant_image')}
+              className="w-full h-full rounded-lg overflow-hidden border border-dashed border-[#c3c6d7] dark:border-slate-600 bg-white dark:bg-slate-900 flex items-center justify-center text-[#737686] cursor-pointer"
+            >
+              {v.image ? (
+                <img src={v.image} alt={v.title} className="w-full h-full object-cover" />
+              ) : (
+                <Icon name="upload_file" className="text-[22px]" />
+              )}
+            </button>
+            {v.image && (
+              <button
+                type="button"
+                onClick={() => clearImage(v.id)}
+                aria-label={t('remove_variant_image')}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow-sm hover:bg-red-700 cursor-pointer"
+              >
+                <Icon name="close" className="text-[12px]" />
+              </button>
             )}
-          </button>
+          </div>
           <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Input
               containerClassName="sm:col-span-2 mb-0"
@@ -115,9 +143,20 @@ export const VariantsSection: React.FC<VariantsSectionProps> = ({ variants, defa
         </div>
       ))}
       {variants.length > 0 && (
-        <p className="text-[14px] font-bold text-[#737686] dark:text-slate-400">
-          {t('product_price_note', { price: defaultPrice })}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[14px] font-bold text-[#737686] dark:text-slate-400">
+            {t('product_price_note', { price: defaultPrice })}
+          </p>
+          <button
+            type="button"
+            onClick={handleRecalculatePrices}
+            disabled={markupMultiplier <= 0}
+            className="flex items-center gap-1.5 text-[13px] font-bold text-[#004ac6] dark:text-blue-400 hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+          >
+            <Icon name="autorenew" className="text-[16px]" />
+            {t('recalculate_variant_prices')}
+          </button>
+        </div>
       )}
     </section>
   );

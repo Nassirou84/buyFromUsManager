@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { Icon } from '@/components/lucide-icon';
 import { Courier, CourierStatus, DispatchOrder, RouteStop } from './types';
+import { AddDriverModal, NewDriverPayload } from './modals/AddDriverModal';
 
 interface DeliveryFleetViewProps {
   couriers: Courier[];
@@ -58,6 +59,7 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
   const [activeRosterFilter, setActiveRosterFilter] = useState<RosterFilter>('All');
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isAddDriverOpen, setIsAddDriverOpen] = useState(false);
 
   const selectedCourier = couriers.find((c) => c.id === selectedCourierId) || couriers[0];
   // Batch assignments go to the hub courier (courier-3 in the sample data)
@@ -137,9 +139,8 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
     }, 800);
   };
 
-  const handleAddCourier = () => {
-    const name = window.prompt(t('fleet_add_prompt'));
-    if (!name) return;
+  const handleAddDriver = (payload: NewDriverPayload) => {
+    const name = `${payload.firstName} ${payload.lastName}`.trim();
     onUpdateCouriers([
       ...couriers,
       {
@@ -156,6 +157,7 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
         currentStopNumber: 0,
       },
     ]);
+    setIsAddDriverOpen(false);
     toast.success(t('fleet_toast_courier_added', { name }));
   };
 
@@ -195,6 +197,12 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
 
   return (
     <div className="flex flex-col w-full gap-6">
+      <AddDriverModal
+        isOpen={isAddDriverOpen}
+        onClose={() => setIsAddDriverOpen(false)}
+        onSubmit={handleAddDriver}
+      />
+
       {/* Operational header & real-time pulse */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex flex-col gap-1.5">
@@ -234,7 +242,7 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
           </button>
 
           <button
-            onClick={handleAddCourier}
+            onClick={() => setIsAddDriverOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-[#131b2e] hover:bg-[#eff4ff] dark:hover:bg-slate-800 text-[#0b1c30] dark:text-white text-[13px] rounded-lg shadow-2xs transition-colors font-semibold border border-[#e5eeff] dark:border-slate-700"
             type="button"
           >

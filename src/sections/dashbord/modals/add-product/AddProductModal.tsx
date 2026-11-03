@@ -13,6 +13,34 @@ import usePostProduct from '@/api/product/post-product';
 import { toast } from 'sonner';
 import generateProductContent from '@/api/product/generate-product-content';
 import generateProductFromTitle from '@/api/product/generate-product-from-title';
+import { ProductVariant } from '../../types';
+
+type AiVariant = { title?: string; name?: string; price?: number; image?: string };
+
+// AI generation refreshes variant content (titles) but must not clobber the price or
+// image the user already set, and the image coming back from the AI is ignored. Keep
+// each existing variant's price and image, matched by title first then by position,
+// falling back to the AI/usd price for genuinely new variants.
+const mergeAiVariants = (
+  generated: AiVariant[],
+  existing: ProductVariant[],
+  fallbackPrice: number,
+): ProductVariant[] =>
+  generated.map((v, i) => {
+    const title = String(v.title ?? v.name ?? '');
+    const prior =
+      existing.find((e) => e.title && e.title.trim().toLowerCase() === title.trim().toLowerCase()) ??
+      existing[i];
+    return {
+      id: `variant-${Date.now()}-${i}`,
+      title,
+      price: prior ? prior.price : Number(v.price ?? fallbackPrice ?? 0),
+      // Keep the original scraped source price so recalculation stays idempotent.
+      sourcePrice: prior?.sourcePrice ?? Number(v.price ?? fallbackPrice ?? 0),
+      image: prior?.image ?? '',
+      ...(prior?.imageFile ? { imageFile: prior.imageFile } : {}),
+    };
+  });
 
 const MARKETPLACES = Object.keys(MARKETPLACE_LABELS) as Marketplace[];
 const toMarketplace = (seller?: string): Marketplace =>
@@ -82,11 +110,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           .map((p) => ({ url: p.url })),
         details: (data.details ?? []).map((d: { type?: string; value?: string }) => ({ name: String(d.type ?? ''), value: String(d.value ?? '') })),
         features: data.features ?? [],
-        variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number; image?: string }, i: number) => ({
+        // Variant images from the scrape are intentionally ignored; the user adds them manually.
+        variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number }, i: number) => ({
           id: `variant-${Date.now()}-${i}`,
           title: String(v.title ?? v.name ?? ''),
           price: Number(v.price ?? data.usdPrice ?? 0),
-          image: typeof v.image === 'string' ? v.image : '',
+          sourcePrice: Number(v.price ?? data.usdPrice ?? 0),
+          image: '',
         })),
       });
       setDataFromScrape(data);
@@ -151,12 +181,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             overallRatingsCounts: data.overallRatingsCounts ?? 0,
             details: (data.details ?? []).map((d: { type?: string; value?: string }) => ({ name: String(d.type ?? ''), value: String(d.value ?? '') })),
             features: data.features ?? [],
-            variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number; image?: string }, i: number) => ({
-              id: `variant-${Date.now()}-${i}`,
-              title: String(v.title ?? v.name ?? ''),
-              price: Number(v.price ?? data.usdPrice ?? 0),
-              image: typeof v.image === 'string' ? v.image : '',
-            })),
+            variants: mergeAiVariants(data.variants ?? [], values.variants, data.usdPrice),
           });
 
           toast.success(t('productContentGeneratedSuccessfully'));
@@ -166,8 +191,25 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         .finally(() => setAiLoading(false));
     } else {
       setAiLoading(true);
-      const url = sourceUrl.trim();
-      generateProductContent(dataFromScrape)
+      // Send the current edited state (not the raw scrape) so edits made in the review
+      // step are not lost. Scrape-only metadata (asin, urls, ids…) is carried through.
+      const payload = {
+        ...dataFromScrape,
+        title: values.title,
+        brand: values.brand,
+        description: values.description,
+        seller: values.seller,
+        productCondition: values.productCondition,
+        usdPrice: values.usdPrice,
+        returnPolicy: values.returnPolicy,
+        customerSays: values.customerSays,
+        overallRating: values.overallRating,
+        overallRatingsCounts: values.overallRatingsCounts,
+        details: values.details.map((d) => ({ type: d.name, value: d.value })),
+        features: values.features,
+        variants: values.variants.map((v) => ({ title: v.title, price: v.price })),
+      };
+      generateProductContent(payload)
         .then((data) => {
 
           patch({
@@ -178,12 +220,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             customerSays: data.customerSays ?? '',
             details: (data.details ?? []).map((d: { type?: string; value?: string }) => ({ name: String(d.type ?? ''), value: String(d.value ?? '') })),
             features: data.features ?? [],
-            variants: (data.variants ?? []).map((v: { title?: string; name?: string; price?: number; image?: string }, i: number) => ({
-              id: `variant-${Date.now()}-${i}`,
-              title: String(v.title ?? v.name ?? ''),
-              price: Number(v.price ?? data.usdPrice ?? 0),
-              image: typeof v.image === 'string' ? v.image : '',
-            })),
+            variants: mergeAiVariants(data.variants ?? [], values.variants, data.usdPrice),
           });
 
           toast.success(t('productContentGeneratedSuccessfully'));

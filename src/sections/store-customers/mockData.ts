@@ -30,6 +30,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     crmNotes:
       'Client corporate très réactif. Privilégie les smartphones reconditionnés grade A+ sous garantie 12 mois. Demande toujours la facture pro-forma électronique.',
     loyaltyPoints: 1240,
+    addresses: [],
     orders: [
       {
         id: 'ord-1',
@@ -123,6 +124,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     },
     crmNotes: 'Fidèle sur les produits Apple et maroquinerie de luxe.',
     loyaltyPoints: 680,
+    addresses: [],
     orders: [],
   },
   {
@@ -153,6 +155,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     },
     crmNotes: 'Commandes corporate de prestige, exige remise en main propre.',
     loyaltyPoints: 1890,
+    addresses: [],
     orders: [],
   },
   {
@@ -183,6 +186,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     },
     crmNotes: 'Premier achat, paiement espèces à la livraison.',
     loyaltyPoints: 120,
+    addresses: [],
     orders: [],
   },
   {
@@ -213,6 +217,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     },
     crmNotes: 'Client provinces avec envoi sécurisé OTP SMS.',
     loyaltyPoints: 490,
+    addresses: [],
     orders: [],
   },
 ];

@@ -89,3 +89,41 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+@media print {
+  /* Leave no page margin so the browser drops its injected header/footer
+     (website hostname/URL, date, document title, page number) from the receipt.
+     The receipt supplies its own spacing via the margin below. */
+  @page {
+    margin: 0;
+  }
+
+  /* Receipt modals portal to <body> with this class. Print only that subtree so
+     the dashboard behind it (which can span several pages) doesn't add blank or
+     duplicate pages — a fixed-position overlay otherwise repeats on every page. */
+  body:has(.receipt-print-root) > *:not(.receipt-print-root) {
+    display: none !important;
+  }
+
+  .receipt-print-root {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* Drop the on-screen modal chrome (height cap, scroll, shadow, rounded corners). */
+  .receipt-print-root > * {
+    max-height: none !important;
+    max-width: none !important;
+    width: 100% !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+
+  .receipt-page {
+    margin: 10mm;
+  }
+}

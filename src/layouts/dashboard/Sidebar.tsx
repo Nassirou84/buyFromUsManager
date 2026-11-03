@@ -3,6 +3,7 @@ import React from 'react';
 import { Bus, CircleHelp, Cloud, ExternalLink, GalleryHorizontal, Package, PanelLeftClose, PanelLeftOpen, Settings, Tag, Truck, Undo2, UserCog, Users } from "lucide-react";
 import Link from 'next/link';
 import { useIsSuperAdmin } from '@/auth/hooks';
+import useGetOrderSummary from '@/api/order/get-summary';
 import LanguagePoppever from './language-poppever';
 
 export type NavigationPath =
@@ -43,7 +44,7 @@ const NAV_SECTIONS: {
     titleKey: 'nav_operations',
     items: [
       { key: 'catalog-scraping', labelKey: 'nav_catalog_scraping', icon: Package },
-      { key: 'orders-fulfillment', labelKey: 'nav_orders_fulfillment', icon: Truck, badge: '19' },
+      { key: 'orders-fulfillment', labelKey: 'nav_orders_fulfillment', icon: Truck },
       { key: 'returns-rmas', labelKey: 'nav_returns_rmas', icon: Undo2 },
       { key: 'delivery-fleet', labelKey: 'nav_delivery_fleet', icon: Bus },
       { key: 'store-customers', labelKey: 'nav_store_customers', icon: Users },
@@ -79,6 +80,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { t } = useLocales();
   const isSuperAdmin = useIsSuperAdmin();
+  const { data: orderSummary } = useGetOrderSummary();
+
+  const navBadges: Partial<Record<NavigationPath, number>> = {
+    'orders-fulfillment': orderSummary?.newPlacedOrders ?? 0,
+  };
 
   return (
     <aside
@@ -122,7 +128,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {t(section.titleKey)}
                 </div>
               )}
-              {section.items.map(({ key, labelKey, icon: ItemIcon, badge }) => (
+              {section.items.map(({ key, labelKey, icon: ItemIcon }) => {
+                const badge = navBadges[key];
+                return (
                 <Link
                   key={key}
                   href={NAV_HREFS[key]}
@@ -136,15 +144,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {!collapsed && (
                     <div className="flex items-center justify-between flex-1">
                       <span>{t(labelKey)}</span>
-                      {badge && (
-                        <span className="px-1.5 py-0.5 text-[10px] bg-[#ffdbcd] text-[#943700] rounded font-bold">
+                      {badge !== undefined && (
+                        <span
+                          className={`px-1.5 py-0.5 text-[10px] rounded font-bold ${badge > 0
+                            ? 'bg-[#fdd8d8] text-[#b91c1c]'
+                            : 'bg-[#e5e7eb] text-[#6b7280] dark:bg-slate-700 dark:text-slate-300'
+                            }`}
+                        >
                           {badge}
                         </span>
                       )}
                     </div>
                   )}
                 </Link>
-              ))}
+                );
+              })}
             </React.Fragment>
           ))}
         </nav>

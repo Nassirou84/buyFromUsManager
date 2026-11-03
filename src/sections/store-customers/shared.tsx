@@ -6,6 +6,10 @@ export const KPI_LABEL = 'text-[11px] font-semibold text-[#565e74] dark:text-sla
 export const TH = 'py-3 px-4 first:px-5 last:px-5';
 export const TD = 'py-3.5 px-4 first:px-5 last:px-5';
 
+/** Storefront product page URL for an order item, or null when the slug is unknown. */
+export const storefrontProductUrl = (slug?: string): string | null =>
+  slug ? `${process.env.NEXT_PUBLIC_STORE_FRONT_URL ?? ''}/products/${slug}` : null;
+
 export const PaymentIcon: React.FC<{ method: string }> = ({ method }) => {
   if (method.includes('Wave')) return <Icon name="waves" className="text-[16px] text-[#004ac6] dark:text-blue-400" />;
   if (method.includes('Orange')) return <Icon name="smartphone" className="text-[16px] text-[#bc4800]" />;

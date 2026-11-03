@@ -1,12 +1,12 @@
 import useLocales from '@/locales/use-locales';
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Icon } from '@/components/lucide-icon';
-import { Customer, CustomerOrder, CustomerSegment } from './types';
-import { InvoicePdfModal } from './InvoicePdfModal';
-import { CustomerDetailsModal } from './CustomerDetailsModal';
+import { GET_CUSTOMER_DETAIL_QUERY_KEY } from '@/api/user/get-customers';
+import { Customer, CustomerSegment } from './types';
 import { CARD, KPI_LABEL, TH, TD, PaymentIcon } from './shared';
-import { AddCustomerModal } from './AddCustomerModal';
 import { RECENT_ORDER_DAYS } from './mapper';
 
 interface StoreCustomersViewProps {
@@ -18,19 +18,8 @@ interface StoreCustomersViewProps {
   isError?: boolean;
   onPageChange: (page: number) => void;
   onSearchChange: (keyword: string) => void;
-  onUpdateCustomer: (updated: Customer) => void;
-  onAddCustomer: (customer: Customer) => void;
+  onStatusChange: (status: 'all' | 'new') => void;
 }
-
-type SegmentFilter = 'all' | CustomerSegment;
-
-const SEGMENT_PILLS: { key: SegmentFilter; labelKey: string; active: string; dot?: string }[] = [
-  { key: 'all', labelKey: 'customers_pill_all', active: 'bg-[#2563eb] text-white' },
-  { key: 'VIP Gold', labelKey: 'customers_pill_vip', active: 'bg-[#bc4800] text-white font-bold', dot: 'bg-[#bc4800]' },
-  { key: 'Régulier', labelKey: 'customers_pill_regular', active: 'bg-[#004ac6] text-white font-bold', dot: 'bg-[#004ac6]' },
-  { key: 'Nouveau client', labelKey: 'customers_pill_new', active: 'bg-[#3f465c] text-white font-bold', dot: 'bg-[#3f465c]' },
-  { key: 'Comptes en attente', labelKey: 'customers_pill_pending', active: 'bg-[#ba1a1a] text-white font-bold', dot: 'bg-[#ba1a1a]' },
-];
 
 export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
   customers,
@@ -41,25 +30,28 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
   isError,
   onPageChange,
   onSearchChange,
-  onUpdateCustomer,
-  onAddCustomer,
+  onStatusChange,
 }) => {
   const { t } = useLocales();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all');
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [invoiceOrder, setInvoiceOrder] = useState<CustomerOrder | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'new'>('all');
 
-  const activeCustomer = customers.find((c) => c.id === selectedId) ?? null;
+  // Open the detail page. The backend has no single-customer endpoint, so seed the clicked
+  // customer into the cache for the detail page to read.
+  const openCustomer = (customer: Customer) => {
+    queryClient.setQueryData([GET_CUSTOMER_DETAIL_QUERY_KEY, customer.id], customer);
+    router.push(`/dashboard/store-customers/${customer.id}`);
+  };
 
-  // Text search runs on the server (keyword filter); only the segment filter is applied to the loaded page.
-  const filteredCustomers = customers.filter((c) => segmentFilter === 'all' || c.segment === segmentFilter);
-
+  // Both the keyword search and the status select run on the server; the loaded page is shown as-is.
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
-  const countFor = (key: SegmentFilter) =>
-    key === 'all' ? totalItems : customers.filter((c) => c.segment === key).length;
+  // The customer's default address (or the first one). Addresses may be absent on the list
+  // payload, so the location column falls back to the account's own city.
+  const preferredAddress = (customer: Customer) =>
+    customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0];
 
   const segmentBadge = (segment: CustomerSegment) => {
     switch (segment) {
@@ -132,25 +124,6 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
             <Icon name="file_download" className="text-[18px]" />
             <span>{t('customers_export')}</span>
           </button>
-          <button
-            onClick={() => {
-              setSegmentFilter('VIP Gold');
-              toast.info(t('customers_toast_segment'));
-            }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-[#131b2e] hover:bg-[#eff4ff] dark:hover:bg-slate-800 text-[#0b1c30] dark:text-white text-[13px] rounded-lg shadow-2xs transition-colors border border-[#e5eeff] dark:border-slate-700 font-medium"
-            type="button"
-          >
-            <Icon name="group_work" className="text-[18px]" />
-            <span>{t('customers_segment_btn')}</span>
-          </button>
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#2563eb] hover:bg-[#004ac6] text-white text-[13px] rounded-lg shadow-sm transition-colors font-semibold"
-            type="button"
-          >
-            <Icon name="person_add" className="text-[18px]" />
-            <span>{t('customers_add')}</span>
-          </button>
         </div>
       </div>
 
@@ -222,9 +195,9 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
         </div>
       </div>
 
-      {/* Search & segment toolbar */}
-      <div className={`${CARD} p-5 flex flex-col gap-4`}>
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+      {/* Search toolbar */}
+      <div className={`${CARD} p-5`}>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="relative flex-1 max-w-xl">
             <Icon name="search" className="text-[20px] absolute left-3 top-1/2 -translate-y-1/2 text-[#737686]" />
             <input
@@ -240,41 +213,17 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
           </div>
 
           <select
-            value={segmentFilter}
-            onChange={(e) => setSegmentFilter(e.target.value as SegmentFilter)}
-            className="h-10 px-3 bg-[#eff4ff] dark:bg-slate-800 text-[#0b1c30] dark:text-white text-[12px] rounded-lg cursor-pointer border-none focus:outline-none"
+            value={statusFilter}
+            onChange={(e) => {
+              const next = e.target.value as 'all' | 'new';
+              setStatusFilter(next);
+              onStatusChange(next);
+            }}
+            className="h-11 px-3 bg-[#eff4ff] dark:bg-slate-800 text-[#0b1c30] dark:text-white text-[13px] rounded-lg cursor-pointer border border-transparent focus:border-[#2563eb]/40 focus:outline-none sm:w-48"
           >
-            <option value="all">{t('customers_segment_all_statuses')}</option>
-            {SEGMENT_PILLS.filter((p) => p.key !== 'all').map((p) => (
-              <option key={p.key} value={p.key}>
-                {t('customers_segment_option', { label: t(p.labelKey) })}
-              </option>
-            ))}
+            <option value="all">{t('customers_pill_all')}</option>
+            <option value="new">{t('customers_seg_new')}</option>
           </select>
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto">
-          {SEGMENT_PILLS.map(({ key, labelKey, active, dot }) => {
-            const isActive = segmentFilter === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setSegmentFilter(key)}
-                className={`px-3.5 py-1.5 rounded-full text-[12px] flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                  isActive
-                    ? active
-                    : 'bg-[#eff4ff] dark:bg-slate-800 hover:bg-[#e5eeff] dark:hover:bg-slate-700 text-[#0b1c30] dark:text-slate-200'
-                }`}
-                type="button"
-              >
-                {dot && <span className={`inline-block w-2 h-2 rounded-full ${dot}`}></span>}
-                <span>{t(labelKey)}</span>
-                <span className={`text-[11px] ${isActive ? 'opacity-80' : 'text-[#565e74] dark:text-slate-400'}`}>
-                  ({countFor(key)})
-                </span>
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -284,14 +233,15 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
           <div className="flex items-center gap-2.5">
             <h2 className="text-[15px] text-[#0b1c30] dark:text-white font-bold">{t('customers_directory')}</h2>
             <span className="px-2.5 py-0.5 bg-[#eff4ff] dark:bg-slate-800 text-[#565e74] dark:text-slate-300 text-[11px] rounded-full">
-              {t('customers_showing', { shown: filteredCustomers.length, total: totalItems })}
+              {t('customers_showing', { shown: customers.length, total: totalItems })}
             </span>
           </div>
           <button
             onClick={() => {
               setSearchQuery('');
               onSearchChange('');
-              setSegmentFilter('all');
+              setStatusFilter('all');
+              onStatusChange('all');
               toast.info(t('customers_toast_refresh'));
             }}
             className="p-1.5 text-[#565e74] dark:text-slate-400 hover:text-[#0b1c30] dark:hover:text-white hover:bg-[#eff4ff] dark:hover:bg-slate-800 rounded-lg transition-colors"
@@ -310,36 +260,28 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
                 <th className={TH}>{t('customers_col_segment')}</th>
                 <th className={TH}>{t('customers_col_location')}</th>
                 <th className={TH}>{t('customers_col_orders')}</th>
-                <th className={TH}>{t('customers_col_ltv')}</th>
                 <th className={TH}>{t('customers_col_payment')}</th>
                 <th className={`${TH} text-right`}>{t('customers_col_actions')}</th>
               </tr>
             </thead>
             <tbody className="text-[#0b1c30] dark:text-slate-100 text-[13px] divide-y divide-[#f0f4ff] dark:divide-slate-800">
-              {(isLoading || isError || filteredCustomers.length === 0) && (
+              {(isLoading || isError || customers.length === 0) && (
                 <tr>
-                  <td colSpan={7} className={`${TD} text-center text-[#565e74] dark:text-slate-400`}>
+                  <td colSpan={6} className={`${TD} text-center text-[#565e74] dark:text-slate-400`}>
                     {isLoading ? t('customers_loading') : isError ? t('customers_load_error') : t('customers_empty')}
                   </td>
                 </tr>
               )}
-              {filteredCustomers.map((customer) => {
-                const isSelected = customer.id === activeCustomer?.id;
+              {customers.map((customer) => {
                 return (
                   <tr
                     key={customer.id}
-                    onClick={() => setSelectedId(customer.id)}
-                    className={`cursor-pointer transition-colors ${
-                      isSelected ? 'bg-[#eff4ff] dark:bg-slate-800/70' : 'hover:bg-[#eff4ff]/60 dark:hover:bg-slate-800/40'
-                    }`}
+                    onClick={() => openCustomer(customer)}
+                    className="cursor-pointer transition-colors hover:bg-[#eff4ff]/60 dark:hover:bg-slate-800/40"
                   >
                     <td className={TD}>
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-bold shadow-2xs shrink-0 ${
-                            isSelected ? 'bg-[#2563eb] text-white' : 'bg-[#dae2fd] text-[#131b2e]'
-                          }`}
-                        >
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-bold shadow-2xs shrink-0 bg-[#dae2fd] text-[#131b2e]">
                           {customer.avatarInitials}
                         </div>
                         <div className="flex flex-col">
@@ -362,12 +304,10 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
                     <td className={TD}>{segmentBadge(customer.segment)}</td>
 
                     <td className={TD}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {customer.location.city} - {customer.location.district}
-                        </span>
-                        <span className="text-[#565e74] dark:text-slate-400 text-[11px]">{customer.location.address}</span>
-                      </div>
+                      <span className="inline-flex items-center gap-1.5 font-medium">
+                        <Icon name="location_on" className="text-[16px] text-[#004ac6] dark:text-blue-400" />
+                        {preferredAddress(customer)?.city || customer.location.city}
+                      </span>
                     </td>
 
                     <td className={TD}>
@@ -398,20 +338,6 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
                     </td>
 
                     <td className={TD}>
-                      <div className="flex flex-col">
-                        <span className="font-bold text-[15px]">
-                          {customer.ltv.toLocaleString()}{' '}
-                          <span className="text-[11px] font-normal text-[#565e74] dark:text-slate-400">FCFA</span>
-                        </span>
-                        {customer.lastOrderAmount > 0 && (
-                          <span className="text-[#565e74] dark:text-slate-400 text-[11px]">
-                            {t('customers_last', { amount: customer.lastOrderAmount.toLocaleString() })}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className={TD}>
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#eff4ff] dark:bg-slate-800 rounded-lg text-[11px] font-medium">
                         <PaymentIcon method={customer.preferredPayment} />
                         {customer.preferredPayment}
@@ -419,27 +345,17 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
                     </td>
 
                     <td className={`${TD} text-right`}>
-                      {isSelected ? (
-                        <button
-                          className="px-2.5 py-1 bg-[#2563eb] text-white text-[11px] rounded-lg shadow-2xs inline-flex items-center gap-1 font-semibold"
-                          type="button"
-                        >
-                          <Icon name="visibility" className="text-[16px]" />
-                          <span>{t('customers_selected')}</span>
-                        </button>
-                      ) : (
-                        <button
-                          className="px-2.5 py-1 bg-[#eff4ff] dark:bg-slate-800 text-[#0b1c30] dark:text-white text-[11px] rounded-lg hover:bg-[#dae2fd] dark:hover:bg-slate-700 transition-colors inline-flex items-center gap-1 font-medium"
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedId(customer.id);
-                          }}
-                        >
-                          <Icon name="visibility" className="text-[16px]" />
-                          <span>{t('customers_view')}</span>
-                        </button>
-                      )}
+                      <button
+                        className="px-2.5 py-1 bg-[#eff4ff] dark:bg-slate-800 text-[#0b1c30] dark:text-white text-[11px] rounded-lg hover:bg-[#dae2fd] dark:hover:bg-slate-700 transition-colors inline-flex items-center gap-1 font-medium"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openCustomer(customer);
+                        }}
+                      >
+                        <Icon name="visibility" className="text-[16px]" />
+                        <span>{t('customers_view')}</span>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -449,7 +365,7 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
         </div>
 
         <div className="p-4 bg-[#eff4ff]/60 dark:bg-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-[#565e74] dark:text-slate-400 text-[11px] border-t border-[#f0f4ff] dark:border-slate-800">
-          <span>{t('customers_showing_footer', { shown: filteredCustomers.length, total: totalItems })}</span>
+          <span>{t('customers_showing_footer', { shown: customers.length, total: totalItems })}</span>
           <div className="flex items-center gap-1.5">
             <button
               className="px-2.5 py-1 bg-white dark:bg-[#131b2e] rounded shadow-2xs disabled:opacity-50"
@@ -473,31 +389,6 @@ export const StoreCustomersView: React.FC<StoreCustomersViewProps> = ({
           </div>
         </div>
       </div>
-
-      <CustomerDetailsModal
-        isOpen={!!activeCustomer}
-        onClose={() => setSelectedId(null)}
-        customer={activeCustomer}
-        onUpdateCustomer={onUpdateCustomer}
-        onViewInvoice={setInvoiceOrder}
-      />
-
-      {activeCustomer && (
-        <InvoicePdfModal
-          isOpen={!!invoiceOrder}
-          onClose={() => setInvoiceOrder(null)}
-          customer={activeCustomer}
-          order={invoiceOrder}
-        />
-      )}
-
-      <AddCustomerModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onAddCustomer={(newC) => {
-          onAddCustomer(newC);
-        }}
-      />
     </div>
   );
 };
