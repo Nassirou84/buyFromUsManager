@@ -9,6 +9,9 @@ export interface ProductVariant {
   title: string;
   price: number;
   image: string;
+  // Original source price from the scrape/AI result; used as the base for price
+  // recalculation so it stays idempotent regardless of the current `price`.
+  sourcePrice?: number;
   // Uploaded file posted to the api; `image` is only its local preview URL.
   imageFile?: File;
 }

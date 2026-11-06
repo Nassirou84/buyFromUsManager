@@ -39,6 +39,7 @@ export const ExtrasStep: React.FC<ExtrasStepProps> = ({ values, setField, onBack
           className="lg:col-span-6"
           variants={values.variants}
           defaultPrice={values.retailPrice}
+          sourceCost={values.usdPrice}
           onChange={(v) => setField('variants', v)}
         />
       </div>

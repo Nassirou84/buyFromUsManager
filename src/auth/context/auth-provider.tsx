@@ -3,7 +3,7 @@
 import { useEffect, useReducer, useCallback, useMemo, useRef } from 'react';
 import { AuthContext } from './auth-context';
 import { isValidToken, isTokenExpiringSoon, setSession } from './utils';
-import axios, { endpoints } from '@/utils/axios';
+import axios, { endpoints, registerAuthRefreshHandler } from '@/utils/axios';
 import refreshTokenRequest from '@/api/user/refreshTokenRequest';
 import { ActionMapType, AuthStateType, AuthUserType } from '../types';
 import { FingerprintComponents } from '@/utils/lodash';
@@ -80,33 +80,74 @@ type Props = {
 export function AuthProvider({ children }: Props) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const isInitialized = useRef(false);
+  // Shared in-flight refresh, so a burst of 401s (or the timer firing alongside
+  // a 401) only hits /token/refresh once and everyone awaits the same result.
+  const refreshPromiseRef = useRef<Promise<string | null> | null>(null);
+  // Pending retry after a transient refresh failure.
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Silently refresh the access token in the background shortly before it
-  // expires, so the session stays alive without reloading the page. Also
-  // used to schedule the *next* refresh after each successful one.
-  const refreshSession = useCallback(async () => {
-    try {
-      const { access_token, user } = await refreshTokenRequest();
+  // Swap the (expiring/expired) access token for a fresh one using the refresh
+  // token cookie. Returns the new token, or null on failure. Used by the
+  // pre-expiry timer, the resume catch-up, and the 401 retry.
+  const refreshSession = useCallback(async (): Promise<string | null> => {
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
 
-      if (!access_token || !isValidToken(access_token) || !user) {
-        throw new Error('Invalid refresh token response');
+    const promise = (async () => {
+      try {
+        const { access_token, user } = await refreshTokenRequest();
+
+        // A 2xx without a usable token means the refresh was rejected.
+        if (!access_token || !isValidToken(access_token) || !user) {
+          throw { response: { status: 401 } };
+        }
+
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = undefined;
+        }
+        setSession(access_token, refreshSession);
+        dispatch({
+          type: Types.LOGIN,
+          payload: {
+            user,
+            token: access_token,
+          },
+        });
+        return access_token as string;
+      } catch (error) {
+        const status = (error as { response?: { status?: number } })?.response?.status;
+
+        // Only a definitive rejection of the refresh token ends the session,
+        // so AuthGuard redirects to login.
+        if (status === 401 || status === 403) {
+          setSession(null);
+          dispatch({ type: Types.LOGOUT });
+          return null;
+        }
+
+        // Transient failure (offline, a network blip when the laptop wakes from
+        // sleep, a 5xx): keep the user signed in and try again shortly instead
+        // of bouncing them to the login screen. The online/visibility/focus
+        // catch-up below also retries.
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = setTimeout(() => {
+          void refreshSession();
+        }, 15_000);
+        return null;
+      } finally {
+        refreshPromiseRef.current = null;
       }
+    })();
 
-      setSession(access_token, refreshSession);
-      dispatch({
-        type: Types.LOGIN,
-        payload: {
-          user,
-          token: access_token,
-        },
-      });
-    } catch {
-      // The refresh token itself is no longer valid: clear the session so
-      // AuthGuard redirects to the login page.
-      setSession(null);
-      dispatch({ type: Types.LOGOUT });
-    }
+    refreshPromiseRef.current = promise;
+    return promise;
   }, []);
+
+  // Let the axios interceptor refresh-and-retry any request that returns 401.
+  useEffect(() => {
+    registerAuthRefreshHandler(refreshSession);
+    return () => registerAuthRefreshHandler(null);
+  }, [refreshSession]);
 
   const initialize = useCallback(async () => {
     if (isInitialized.current) return;
@@ -162,12 +203,19 @@ export function AuthProvider({ children }: Props) {
     };
 
     document.addEventListener('visibilitychange', catchUp);
+    window.addEventListener('focus', catchUp);
     window.addEventListener('online', catchUp);
     return () => {
       document.removeEventListener('visibilitychange', catchUp);
+      window.removeEventListener('focus', catchUp);
       window.removeEventListener('online', catchUp);
     };
   }, [refreshSession]);
+
+  // Drop any pending refresh retry when the provider unmounts.
+  useEffect(() => () => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+  }, []);
 
   const login = useCallback(async (email: string, password: string, fingerprint?: FingerprintComponents) => {
     const data = {

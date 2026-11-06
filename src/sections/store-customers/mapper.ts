@@ -1,8 +1,7 @@
-import { ApiOrder } from '@/api/user/get-customer-orders';
-import { ApiCustomer } from '@/api/user/get-customers';
-import { Customer, CustomerOrder, CustomerSegment } from './types';
+import { ApiOrder, variantLabel } from '@/api/user/get-customer-orders';
+import { ApiCustomer, ApiCustomerAddress, NEW_CUSTOMER_DAYS } from '@/api/user/get-customers';
+import { Customer, CustomerAddress, CustomerOrder, CustomerSegment } from './types';
 
-const NEW_CUSTOMER_DAYS = 30;
 export const RECENT_ORDER_DAYS = 7;
 const EMPTY = '—';
 
@@ -11,6 +10,9 @@ export const isRecentOrder = (order: CustomerOrder) =>
 
 export const mapApiOrder = (order: ApiOrder): CustomerOrder => {
   const createdAt = new Date(order.createdAt);
+  // Prefer a completed settlement, otherwise the most recent payment attempt.
+  const payments = order.payments ?? [];
+  const payment = payments.find((p) => p.status === 'completed') ?? payments[payments.length - 1];
   return {
     id: String(order.id),
     orderNumber: order.uid ?? `#${order.id}`,
@@ -22,27 +24,61 @@ export const mapApiOrder = (order: ApiOrder): CustomerOrder => {
       const photos = item.product?.photos ?? [];
       return {
         name: item.product?.title ?? EMPTY,
-        variant: '',
+        variant: variantLabel(item.variant),
         quantity: item.quantity ?? 1,
         price: item.unitPrice ?? 0,
         image: (photos.find((p) => p.isCover) ?? photos[0])?.url ?? '',
+        slug: item.product?.slug ?? undefined,
       };
     }),
     totalAmount: order.orderPrice ?? 0,
     taxIncludedPercent: 0,
     deliveryStatus: order.status ?? EMPTY,
-    paymentMethod: EMPTY,
+    paymentMethod: payment?.paymentMethod ?? EMPTY,
+    updatedAt: order.updatedAt ?? undefined,
+    estimatedDeliveryAt: order.estimatedDeliveryAt ?? undefined,
+    payment: payment
+      ? {
+        transactionId: payment.transactionId ?? undefined,
+        amount: payment.amount ?? undefined,
+        status: payment.status ?? undefined,
+        method: payment.paymentMethod ?? undefined,
+        paidAt: payment.createdAt ?? undefined,
+        taxedAmount: payment.taxedAmount ?? undefined,
+      }
+      : undefined,
+    shippingAddress: {
+      fullName: order.fullName ?? undefined,
+      phone: order.phone ?? undefined,
+      street: order.street ?? undefined,
+      city: order.city ?? undefined,
+      state: order.state ?? undefined,
+      country: order.country ?? undefined,
+    },
   };
 };
 
 const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString() : EMPTY);
 
-// The backend has no segment field. Until it does, accounts younger than 30 days are "new", the rest "regular".
+// The backend has no segment field. Until it does, accounts younger than NEW_CUSTOMER_DAYS are "new", the rest "regular".
 const segmentFor = (createdAt?: string | null): CustomerSegment => {
   if (!createdAt) return 'Régulier';
   const ageInDays = (Date.now() - new Date(createdAt).getTime()) / 86_400_000;
   return ageInDays <= NEW_CUSTOMER_DAYS ? 'Nouveau client' : 'Régulier';
 };
+
+const mapApiAddress = (address: ApiCustomerAddress): CustomerAddress => ({
+  label: address.label ?? undefined,
+  fullName: address.fullName ?? undefined,
+  street: address.street ?? undefined,
+  suite: address.suite ?? undefined,
+  city: address.city ?? undefined,
+  state: address.state ?? undefined,
+  country: address.country ?? undefined,
+  phone: address.phone ?? undefined,
+  what3words: address.what3words ?? undefined,
+  isDefault: address.isDefault ?? undefined,
+});
 
 export const mapApiCustomer = (user: ApiCustomer): Customer => {
   const firstName = user.firstName?.trim() ?? '';
@@ -79,6 +115,7 @@ export const mapApiCustomer = (user: ApiCustomer): Customer => {
     },
     crmNotes: '',
     loyaltyPoints: 0,
+    addresses: (user.addresses ?? []).map(mapApiAddress),
     orders: [],
   };
 };
