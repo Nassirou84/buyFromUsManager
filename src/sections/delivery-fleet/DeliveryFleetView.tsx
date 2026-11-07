@@ -1,10 +1,16 @@
 import useLocales from '@/locales/use-locales';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/lucide-icon';
 import { Courier, CourierStatus, DispatchOrder, RouteStop } from './types';
 import { AddDriverModal, NewDriverPayload } from './modals/AddDriverModal';
 import useCreateDriver from '@/api/user/create-driver';
+import useGetDrivers, { ApiDriver, GET_DRIVERS_QUERY_KEY } from '@/api/user/get-drivers';
+import useGetOrdersAwaitingDelivery, { GET_ORDERS_AWAITING_DELIVERY_QUERY_KEY } from '@/api/order/get-orders-awaiting-delivery';
+import useBatchAssignDelivery from '@/api/order/batch-assign-delivery';
+import useGetAssignDeliveries from '@/api/order/get-assign-deliveries';
+import { ApiOrder } from '@/api/user/get-customer-orders';
 
 interface DeliveryFleetViewProps {
   couriers: Courier[];
@@ -31,12 +37,6 @@ const STATUS_LABEL_KEYS: Record<CourierStatus, string> = {
   'Idle at Hub': 'fleet_status_idle',
 };
 
-const TYPE_LABEL_KEYS: Record<DispatchOrder['type'], string> = {
-  'VIP White-Glove': 'fleet_type_vip',
-  'Same-Day Express': 'fleet_type_express',
-  'Standard Concierge': 'fleet_type_standard',
-};
-
 const CARD = 'bg-white dark:bg-[#131b2e] rounded-xl border border-[#e5eeff] dark:border-slate-800 shadow-2xs';
 const KPI_LABEL = 'text-[11px] font-semibold text-[#565e74] dark:text-slate-400 uppercase tracking-wider';
 const KPI_FOOT = 'mt-4 pt-2.5 flex items-center justify-between text-[#565e74] dark:text-slate-400 text-[11px] bg-[#eff4ff]/60 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-lg';
@@ -56,17 +56,90 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
   onUpdateDispatchOrders,
 }) => {
   const { t } = useLocales();
+  const queryClient = useQueryClient();
   const { mutate: createDriver, isPending: isCreatingDriver } = useCreateDriver();
+  const { mutate: batchAssignDelivery, isPending: isBatchAssigning } = useBatchAssignDelivery();
+  const { data: driversData } = useGetDrivers();
+  const { data: awaitingData } = useGetOrdersAwaitingDelivery();
   const [selectedCourierId, setSelectedCourierId] = useState<string>(couriers[0]?.id || '');
   const [activeRosterFilter, setActiveRosterFilter] = useState<RosterFilter>('All');
+  const [rosterPage, setRosterPage] = useState(1);
+  const [itineraryFilter, setItineraryFilter] = useState<'out_for_delivery' | 'completed'>('out_for_delivery');
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isAddDriverOpen, setIsAddDriverOpen] = useState(false);
 
   const selectedCourier = couriers.find((c) => c.id === selectedCourierId) || couriers[0];
+  // Deliveries assigned to the selected courier, filtered by the itinerary toolbar.
+  const { data: assignDeliveries = [], isLoading: isLoadingDeliveries } = useGetAssignDeliveries(selectedCourier?.id);
+  const itineraryDeliveries = assignDeliveries.filter((d) =>
+    itineraryFilter === 'completed' ? d.isCompleted : !d.isCompleted
+  );
+
+  // Group deliveries that share the same address so multi-order stops show together.
+  const deliveryAddress = (d: (typeof itineraryDeliveries)[number]) =>
+    [d.assignOrder?.street, d.assignOrder?.city, d.assignOrder?.state].filter(Boolean).join(', ');
+  const itineraryGroups = itineraryDeliveries.reduce<
+    { key: string; address: string; deliveries: typeof itineraryDeliveries }[]
+  >((groups, delivery) => {
+    const address = deliveryAddress(delivery);
+    // Deliveries without an address stay ungrouped (unique key per delivery).
+    const key = address ? address.trim().toLowerCase() : `no-address-${delivery.id}`;
+    const group = groups.find((g) => g.key === key);
+    if (group) {
+      group.deliveries.push(delivery);
+    } else {
+      groups.push({ key, address, deliveries: [delivery] });
+    }
+    return groups;
+  }, []);
   // Batch assignments go to the hub courier (courier-3 in the sample data)
   const batchCourier = couriers.find((c) => c.id === 'courier-3') || selectedCourier;
   const selectedOrdersCount = dispatchOrders.filter((o) => o.isSelected).length;
+
+  // The backend only exposes a driver's identity and delivery counts; fleet-specific
+  // fields (vehicle, zone, battery, capacity) aren't modelled, so we keep only real data.
+  const mapDriverToCourier = (driver: ApiDriver): Courier => {
+    const name = `${driver.firstName ?? ''} ${driver.lastName ?? ''}`.trim() || (driver.email ?? `Driver #${driver.id}`);
+    const pending = driver.allPendingDeliveries ?? 0;
+    return {
+      id: String(driver.id),
+      name,
+      email: driver.email ?? undefined,
+      status: pending > 0 ? 'En Route' : 'Idle at Hub',
+      currentStops: pending,
+      assignedCount: driver.allAssignedDeliveries ?? 0,
+      completedCount: driver.allCompletedDeliveries ?? 0,
+    };
+  };
+
+  // Seed the roster from the live drivers list once it loads (replacing the mock couriers).
+  useEffect(() => {
+    if (driversData?.drivers) {
+      onUpdateCouriers(driversData.drivers.map(mapDriverToCourier));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driversData]);
+
+  // The orders-awaiting-delivery endpoint returns plain order records; the SLA, courier
+  // matching and service-type fields aren't modelled, so we keep only real order data.
+  const mapOrderToDispatch = (order: ApiOrder): DispatchOrder => ({
+    id: order.uid ?? String(order.id),
+    orderNumber: order.uid ?? `#${order.id}`,
+    customerName: order.fullName ?? '',
+    address: [order.street, order.city, order.state, order.country].filter(Boolean).join(', '),
+    itemsCount: order.products?.reduce((n, p) => n + (p.quantity ?? 1), 0) ?? 0,
+    totalValue: order.orderPrice ?? 0,
+    isPriority: order.isPriority ?? false,
+  });
+
+  // Seed the unassigned queue from the live awaiting-delivery orders once they load.
+  useEffect(() => {
+    if (awaitingData?.orders) {
+      onUpdateDispatchOrders(awaitingData.orders.map(mapOrderToDispatch));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaitingData]);
 
   const handleToggleSelectOrder = (orderId: string) => {
     onUpdateDispatchOrders(
@@ -75,25 +148,44 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
   };
 
   const handleBatchAssign = () => {
-    if (selectedOrdersCount === 0) {
+    const selectedOrders = dispatchOrders.filter((o) => o.isSelected);
+    if (selectedOrders.length === 0 || !batchCourier) {
       toast.error(t('fleet_toast_no_selection'));
       return;
     }
 
-    onUpdateDispatchOrders(dispatchOrders.filter((o) => !o.isSelected));
-    onUpdateCouriers(
-      couriers.map((c) =>
-        c.id === batchCourier.id
-          ? {
-              ...c,
-              status: 'En Route' as const,
-              currentStops: c.currentStops + selectedOrdersCount,
-              nextStopEta: t('fleet_assigned_stops', { count: selectedOrdersCount }),
-            }
-          : c
-      )
+    batchAssignDelivery(
+      {
+        driver_id: batchCourier.id,
+        // DispatchOrder.id holds the order uid (see mapOrderToDispatch).
+        orders: selectedOrders.map((o) => ({ uid: o.id })),
+      },
+      {
+        onSuccess: () => {
+          // Drop the assigned orders from the queue and bump the courier's load so
+          // the UI updates immediately, then let the server data win on refetch.
+          onUpdateDispatchOrders(dispatchOrders.filter((o) => !o.isSelected));
+          onUpdateCouriers(
+            couriers.map((c) =>
+              c.id === batchCourier.id
+                ? {
+                    ...c,
+                    status: 'En Route' as const,
+                    currentStops: c.currentStops + selectedOrders.length,
+                    nextStopEta: t('fleet_assigned_stops', { count: selectedOrders.length }),
+                  }
+                : c
+            )
+          );
+          queryClient.invalidateQueries({ queryKey: [GET_ORDERS_AWAITING_DELIVERY_QUERY_KEY] });
+          queryClient.invalidateQueries({ queryKey: [GET_DRIVERS_QUERY_KEY] });
+          toast.success(t('fleet_toast_batch_assigned', { count: selectedOrders.length, name: batchCourier.name }));
+        },
+        onError: () => {
+          toast.error(t('fleet_toast_batch_failed'));
+        },
+      }
     );
-    toast.success(t('fleet_toast_batch_assigned', { count: selectedOrdersCount, name: batchCourier.name }));
   };
 
   const handleAutoAssign = () => {
@@ -108,7 +200,7 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
             return { ...c, status: 'En Route' as const, currentStops: 4, nextStopEta: t('fleet_depot_dispatch') };
           }
           if (c.id === 'courier-1' || c.id === 'courier-2') {
-            return { ...c, currentStops: Math.min(c.maxStops, c.currentStops + 1) };
+            return { ...c, currentStops: Math.min(c.maxStops ?? Infinity, c.currentStops + 1) };
           }
           return c;
         })
@@ -126,8 +218,8 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
       const manifestText = t('fleet_manifest_text', {
         date: new Date().toLocaleString(),
         courier: selectedCourier.name,
-        vehicle: selectedCourier.vehicleNumber,
-        zone: selectedCourier.zone,
+        vehicle: selectedCourier.vehicleNumber ?? '—',
+        zone: selectedCourier.zone ?? '—',
         stops: routeStops.map((s) => `${s.title} - ${s.status} (${s.time})`).join('\n'),
       });
       const blob = new Blob([manifestText], { type: 'text/plain' });
@@ -145,22 +237,8 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
     const name = `${payload.firstName} ${payload.lastName}`.trim();
     createDriver(payload, {
       onSuccess: () => {
-        onUpdateCouriers([
-          ...couriers,
-          {
-            id: `courier-${Date.now()}`,
-            name,
-            vehicleType: 'electric_car',
-            vehicleNumber: `Van #SF-${Math.floor(10 + Math.random() * 90)}`,
-            zone: 'Abidjan / SF Hub',
-            status: 'Idle at Hub',
-            currentStops: 0,
-            maxStops: 12,
-            batteryPercent: 100,
-            nextStopEta: t('fleet_available_for_assignment'),
-            currentStopNumber: 0,
-          },
-        ]);
+        // Refetch the drivers list so the roster reflects the server state.
+        queryClient.invalidateQueries({ queryKey: [GET_DRIVERS_QUERY_KEY] });
         setIsAddDriverOpen(false);
         toast.success(t('fleet_toast_courier_added', { name }));
       },
@@ -172,6 +250,20 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
 
   const filteredCouriers = couriers.filter((c) => matchesFilter(c, activeRosterFilter));
   const countFor = (filter: RosterFilter) => couriers.filter((c) => matchesFilter(c, filter)).length;
+
+  // Client-side pagination for the courier roster.
+  const ROSTER_PAGE_SIZE = 6;
+  const rosterTotalPages = Math.max(1, Math.ceil(filteredCouriers.length / ROSTER_PAGE_SIZE));
+  const rosterSafePage = Math.min(rosterPage, rosterTotalPages);
+  const pagedCouriers = filteredCouriers.slice(
+    (rosterSafePage - 1) * ROSTER_PAGE_SIZE,
+    rosterSafePage * ROSTER_PAGE_SIZE
+  );
+
+  // Reset to the first page whenever the roster filter changes.
+  useEffect(() => {
+    setRosterPage(1);
+  }, [activeRosterFilter]);
 
   const getStatusBadge = (courier: Courier) => {
     if (courier.isVipSpecialist) {
@@ -390,9 +482,8 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {filteredCouriers.map((courier) => {
+              {pagedCouriers.map((courier) => {
                 const isSelected = courier.id === selectedCourier?.id;
-                const capacityPercentage = Math.round((courier.currentStops / courier.maxStops) * 100);
 
                 return (
                   <div
@@ -408,7 +499,7 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
                       <div className="flex items-center gap-2.5">
                         <div className="relative">
                           <div className="w-11 h-11 rounded-lg bg-[#e5eeff] dark:bg-slate-700 flex items-center justify-center text-[#004ac6] dark:text-blue-400">
-                            <Icon name={courier.vehicleType} className="text-[24px]" />
+                            <Icon name={courier.vehicleType ?? 'local_shipping'} className="text-[24px]" />
                           </div>
                           <span
                             className={`absolute -bottom-1 -right-1 w-3 h-3 border-2 border-white dark:border-[#131b2e] rounded-full ${
@@ -423,75 +514,36 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-[13px] font-bold text-[#0b1c30] dark:text-white">{courier.name}</span>
-                            <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#131b2e] text-[11px] rounded font-medium">
-                              {courier.vehicleNumber}
-                            </span>
+                            {courier.vehicleNumber && (
+                              <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#131b2e] text-[11px] rounded font-medium">
+                                {courier.vehicleNumber}
+                              </span>
+                            )}
                           </div>
-                          <span className="text-[12px] text-[#565e74] dark:text-slate-400 flex items-center gap-1">
-                            <Icon name="map" className="text-[14px]" />
-                            {courier.zone}
-                          </span>
+                          {(courier.zone || courier.email) && (
+                            <span className="text-[12px] text-[#565e74] dark:text-slate-400 flex items-center gap-1">
+                              <Icon name={courier.zone ? 'map' : 'mail'} className="text-[14px]" />
+                              <span className="truncate">{courier.zone ?? courier.email}</span>
+                            </span>
+                          )}
                         </div>
                       </div>
                       {getStatusBadge(courier)}
                     </div>
 
-                    <div className="flex flex-col gap-1 pt-1">
-                      <div className="flex justify-between text-[11px]">
-                        <span className="text-[#565e74] dark:text-slate-400 font-medium">{t('fleet_capacity_load')}</span>
-                        <span
-                          className={`font-semibold ${
-                            courier.currentStops === 0
-                              ? 'text-[#004ac6] dark:text-blue-400'
-                              : courier.status === 'Near Capacity'
-                              ? 'text-[#bc4800]'
-                              : 'text-[#0b1c30] dark:text-white'
-                          }`}
-                        >
-                          {t('fleet_stops_of', { current: courier.currentStops, max: courier.maxStops })} (
-                          {courier.currentStops === 0 ? t('fleet_status_available') : `${capacityPercentage}%`})
-                        </span>
+                    <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                      <div className="flex flex-col gap-0.5 bg-[#eff4ff]/60 dark:bg-slate-800/60 rounded-lg py-2">
+                        <span className="text-[15px] font-bold text-[#004ac6] dark:text-blue-400">{courier.currentStops}</span>
+                        <span className="text-[11px] text-[#565e74] dark:text-slate-400 font-medium">{t('fleet_pending_deliveries')}</span>
                       </div>
-                      <div className="w-full bg-[#e5eeff] dark:bg-slate-700 h-2 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${courier.status === 'Near Capacity' ? 'bg-[#bc4800]' : 'bg-[#2563eb]'}`}
-                          style={{ width: `${capacityPercentage}%` }}
-                        ></div>
+                      <div className="flex flex-col gap-0.5 bg-[#eff4ff]/60 dark:bg-slate-800/60 rounded-lg py-2">
+                        <span className="text-[15px] font-bold text-[#0b1c30] dark:text-white">{courier.assignedCount ?? 0}</span>
+                        <span className="text-[11px] text-[#565e74] dark:text-slate-400 font-medium">{t('fleet_assigned_deliveries')}</span>
                       </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-1 text-[#565e74] dark:text-slate-400 text-[11px]">
-                      <div className="flex items-center gap-4 min-w-0">
-                        <span className="flex items-center gap-1 min-w-0">
-                          <Icon name="near_me" className="text-[16px] text-[#004ac6] dark:text-blue-400" />
-                          <span className="truncate">{courier.nextStopEta}</span>
-                        </span>
-                        <span className="flex items-center gap-1 shrink-0">
-                          <Icon name="battery_charging_full" className="text-[16px]" />
-                          {courier.batteryPercent}%
-                        </span>
+                      <div className="flex flex-col gap-0.5 bg-[#eff4ff]/60 dark:bg-slate-800/60 rounded-lg py-2">
+                        <span className="text-[15px] font-bold text-[#0b1c30] dark:text-white">{courier.completedCount ?? 0}</span>
+                        <span className="text-[11px] text-[#565e74] dark:text-slate-400 font-medium">{t('fleet_completed_deliveries')}</span>
                       </div>
-                      {courier.currentStops === 0 ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleBatchAssign();
-                          }}
-                          className="px-2.5 py-1 bg-[#2563eb] text-white text-[11px] rounded-lg hover:bg-[#004ac6] transition-colors flex items-center gap-1 font-semibold shrink-0"
-                          type="button"
-                        >
-                          <Icon name="move_to_inbox" className="text-[14px]" />
-                          {t('fleet_assign_orders', { count: 4 })}
-                        </button>
-                      ) : (
-                        <button
-                          className="text-[#004ac6] dark:text-blue-400 font-semibold hover:underline flex items-center gap-1 shrink-0"
-                          type="button"
-                        >
-                          <span>{t('fleet_view_route')}</span>
-                          <Icon name="arrow_forward" className="text-[14px]" />
-                        </button>
-                      )}
                     </div>
                   </div>
                 );
@@ -499,15 +551,28 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
             </div>
 
             <div className="pt-2 flex items-center justify-between text-[#565e74] dark:text-slate-400 text-[11px] border-t border-[#f0f4ff] dark:border-slate-800">
-              <span>{t('fleet_displaying', { count: filteredCouriers.length })}</span>
-              <button
-                onClick={() => toast.info(t('fleet_toast_view_all', { count: 18 }))}
-                className="text-[#004ac6] dark:text-blue-400 hover:underline font-semibold flex items-center gap-1"
-                type="button"
-              >
-                <span>{t('fleet_view_all', { count: 18 })}</span>
-                <Icon name="expand_more" className="text-[14px]" />
-              </button>
+              <span>{t('fleet_displaying', { count: pagedCouriers.length })}</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  className="px-2.5 py-1 bg-white dark:bg-[#131b2e] rounded shadow-2xs border border-[#e5eeff] dark:border-slate-700 disabled:opacity-50"
+                  disabled={rosterSafePage <= 1}
+                  onClick={() => setRosterPage((p) => Math.max(1, p - 1))}
+                  type="button"
+                >
+                  {t('fleet_prev')}
+                </button>
+                <span className="px-2.5 py-1 bg-[#2563eb] text-white rounded font-semibold">
+                  {rosterSafePage} / {rosterTotalPages}
+                </span>
+                <button
+                  className="px-2.5 py-1 bg-white dark:bg-[#131b2e] rounded shadow-2xs border border-[#e5eeff] dark:border-slate-700 disabled:opacity-50"
+                  disabled={rosterSafePage >= rosterTotalPages}
+                  onClick={() => setRosterPage((p) => Math.min(rosterTotalPages, p + 1))}
+                  type="button"
+                >
+                  {t('fleet_next')}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -532,10 +597,13 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
                 <span className="text-[#737686]">→</span>
                 <button
                   onClick={handleBatchAssign}
-                  className="px-2.5 py-0.5 bg-[#2563eb] text-white rounded text-[11px] hover:bg-[#004ac6] transition-colors font-semibold"
+                  disabled={isBatchAssigning}
+                  className="px-2.5 py-0.5 bg-[#2563eb] text-white rounded text-[11px] hover:bg-[#004ac6] transition-colors font-semibold disabled:opacity-60"
                   type="button"
                 >
-                  {t('fleet_batch_to', { name: batchCourier?.name ?? '' })}
+                  {isBatchAssigning
+                    ? t('fleet_assigning')
+                    : t('fleet_batch_to', { name: batchCourier?.name ?? '' })}
                 </button>
               </div>
             </div>
@@ -563,55 +631,25 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-[13px] font-bold text-[#0b1c30] dark:text-white">{order.orderNumber}</span>
-                          <span
-                            className={`px-1.5 py-0.5 text-[10px] rounded uppercase font-semibold ${
-                              order.type === 'VIP White-Glove'
-                                ? 'bg-[#bc4800] text-white'
-                                : order.type === 'Same-Day Express'
-                                ? 'bg-[#dae2fd] text-[#131b2e]'
-                                : 'bg-[#e5eeff] dark:bg-slate-700 text-[#0b1c30] dark:text-white'
-                            }`}
-                          >
-                            {t(TYPE_LABEL_KEYS[order.type])}
-                          </span>
-                          <span className="text-[#565e74] dark:text-slate-400 text-[11px]">• {order.customerName}</span>
+                          {order.isPriority && (
+                            <span className="px-1.5 py-0.5 text-[10px] rounded uppercase font-semibold bg-[#bc4800] text-white">
+                              {t('fleet_order_priority')}
+                            </span>
+                          )}
+                          {order.customerName && (
+                            <span className="text-[#565e74] dark:text-slate-400 text-[11px]">• {order.customerName}</span>
+                          )}
                         </div>
                         <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[#565e74] dark:text-slate-400 text-[12px] mt-1">
-                          <span className="flex items-center gap-1">
-                            <Icon name="pin_drop" className="text-[14px]" />
-                            {order.address}
-                          </span>
+                          {order.address && (
+                            <span className="flex items-center gap-1">
+                              <Icon name="pin_drop" className="text-[14px]" />
+                              {order.address}
+                            </span>
+                          )}
                           <span>{t('fleet_items_value', { count: order.itemsCount, value: order.totalValue.toFixed(2) })}</span>
-                          <span
-                            className={`font-medium flex items-center gap-1 ${
-                              order.slaMinutes <= 20 ? 'text-[#ba1a1a]' : 'text-[#565e74] dark:text-slate-400'
-                            }`}
-                          >
-                            <Icon name="timer" className="text-[14px]" />
-                            {order.slaRemaining}
-                          </span>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-2.5 pl-6 md:pl-0">
-                      <div className="flex flex-col text-right">
-                        <span className="text-[11px] text-[#004ac6] dark:text-blue-400 font-semibold">
-                          {t('fleet_match', { name: order.matchedCourier })}
-                        </span>
-                        <span className="text-[11px] text-[#565e74] dark:text-slate-400">{order.matchReason}</span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          onUpdateDispatchOrders(dispatchOrders.filter((o) => o.id !== order.id));
-                          toast.success(t('fleet_toast_order_assigned', { order: order.orderNumber, name: order.matchedCourier }));
-                        }}
-                        className="px-2.5 py-1.5 bg-white dark:bg-[#131b2e] hover:bg-[#e5eeff] dark:hover:bg-slate-700 text-[#0b1c30] dark:text-white rounded-lg text-[11px] transition-colors flex items-center gap-1 shadow-2xs font-semibold border border-[#e5eeff] dark:border-slate-700"
-                        type="button"
-                      >
-                        <span>{t('fleet_assign')}</span>
-                        <Icon name="arrow_drop_down" className="text-[14px]" />
-                      </button>
                     </div>
                   </div>
                 ))
@@ -632,132 +670,171 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
                       <span className="text-[13px] font-bold text-[#0b1c30] dark:text-white">
                         {t('fleet_live_manifest', { name: selectedCourier.name })}
                       </span>
-                      <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#131b2e] text-[11px] rounded">
-                        {selectedCourier.vehicleNumber}
-                      </span>
+                      {selectedCourier.vehicleNumber && (
+                        <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#131b2e] text-[11px] rounded">
+                          {selectedCourier.vehicleNumber}
+                        </span>
+                      )}
                     </div>
                     <span className="text-[11px] text-[#565e74] dark:text-slate-400">
-                      {t('fleet_route_batch', { batch: '#R-881', distance: '18.4 mi', time: '~16:30' })}
+                      {t('fleet_itinerary_subtitle', { count: itineraryDeliveries.length })}
                     </span>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => toast.info(t('fleet_toast_call', { name: selectedCourier.name }))}
-                    className="p-1.5 bg-white dark:bg-[#131b2e] hover:bg-[#e5eeff] dark:hover:bg-slate-700 text-[#0b1c30] dark:text-white rounded shadow-2xs"
-                    title={t('fleet_call_courier')}
-                    type="button"
-                  >
-                    <Icon name="call" className="text-[18px]" />
-                  </button>
-                  <button
-                    onClick={() => toast.info(t('fleet_toast_radio', { name: selectedCourier.name }))}
-                    className="p-1.5 bg-white dark:bg-[#131b2e] hover:bg-[#e5eeff] dark:hover:bg-slate-700 text-[#0b1c30] dark:text-white rounded shadow-2xs"
-                    title={t('fleet_radio_chat')}
-                    type="button"
-                  >
-                    <Icon name="chat" className="text-[18px]" />
-                  </button>
-                  <button
-                    onClick={() => toast.info(t('fleet_toast_reroute'))}
-                    className="px-2.5 py-1.5 bg-[#bc4800] text-white rounded text-[11px] hover:bg-[#943700] transition-colors flex items-center gap-1 font-semibold"
-                    type="button"
-                  >
-                    <Icon name="alt_route" className="text-[14px]" />
-                    <span>{t('fleet_reroute')}</span>
-                  </button>
-                </div>
               </div>
 
-              <div className="flex flex-col gap-4 relative pl-4 mt-1">
-                <div className="absolute left-[27px] top-4 bottom-4 w-0.5 bg-[#e5eeff] dark:bg-slate-700"></div>
+              {/* Itinerary toolbar: out for delivery vs completed (mapped to isCompleted) */}
+              <div className="flex items-center gap-1.5 bg-[#eff4ff] dark:bg-slate-800 p-1 rounded-lg w-fit">
+                {([
+                  { key: 'out_for_delivery' as const, labelKey: 'fleet_itinerary_out_for_delivery' },
+                  { key: 'completed' as const, labelKey: 'fleet_itinerary_completed' },
+                ]).map(({ key, labelKey }) => (
+                  <button
+                    key={key}
+                    onClick={() => setItineraryFilter(key)}
+                    className={`px-3 py-1.5 text-[12px] rounded-md whitespace-nowrap transition-colors font-semibold ${
+                      itineraryFilter === key
+                        ? 'bg-[#2563eb] text-white shadow-2xs'
+                        : 'text-[#565e74] dark:text-slate-300 hover:text-[#0b1c30] dark:hover:text-white'
+                    }`}
+                    type="button"
+                  >
+                    {t(labelKey)}
+                  </button>
+                ))}
+              </div>
 
-                {routeStops.map((stop) => {
-                  const isCompleted = stop.status === 'completed';
-                  const isCurrent = stop.status === 'current';
+              <div className="flex flex-col gap-2">
+                {isLoadingDeliveries ? (
+                  <div className="p-8 text-center text-[#565e74] dark:text-slate-400 flex flex-col items-center gap-2">
+                    <Icon name="sync" className="text-[28px] animate-spin text-[#2563eb]" />
+                    <span className="text-xs">{t('fleet_itinerary_loading')}</span>
+                  </div>
+                ) : itineraryDeliveries.length === 0 ? (
+                  <div className="p-8 text-center text-[#565e74] dark:text-slate-400 flex flex-col items-center gap-2 bg-[#eff4ff]/60 dark:bg-slate-800/60 rounded-lg">
+                    <Icon name="inbox" className="text-[32px] text-[#2563eb]" />
+                    <span className="text-xs">{t('fleet_itinerary_empty')}</span>
+                  </div>
+                ) : (
+                  itineraryGroups.map((group) => {
+                    const isGrouped = group.deliveries.length > 1;
 
-                  return (
-                    <div key={stop.id} className="relative flex items-start gap-4 z-10">
+                    return (
                       <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
-                          isCompleted
-                            ? 'bg-[#2563eb] text-white'
-                            : isCurrent
-                            ? 'bg-[#004ac6] text-white ring-4 ring-[#dae2fd] dark:ring-blue-950 shadow-md animate-pulse'
-                            : 'bg-[#e5eeff] dark:bg-slate-700 text-[#565e74] dark:text-slate-300'
-                        }`}
+                        key={group.key}
+                        className="rounded-lg bg-[#eff4ff]/60 dark:bg-slate-800/60 overflow-hidden"
                       >
-                        {isCompleted ? (
-                          <Icon name="check" className="text-[16px]" />
-                        ) : isCurrent ? (
-                          <Icon name="navigation" className="text-[16px]" />
-                        ) : (
-                          <span className="text-[11px] font-bold">{stop.stopNumber}</span>
-                        )}
-                      </div>
-
-                      <div
-                        className={`flex flex-col flex-1 p-3 rounded-lg transition-all ${
-                          isCurrent
-                            ? 'bg-[#eff4ff] dark:bg-slate-800 shadow-sm border border-[#2563eb]/20'
-                            : 'bg-[#eff4ff]/60 dark:bg-slate-800/60'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span
-                              className={`text-[13px] font-bold ${
-                                isCurrent ? 'text-[#004ac6] dark:text-blue-400' : 'text-[#0b1c30] dark:text-white'
-                              }`}
-                            >
-                              {stop.title}
+                        {isGrouped && (
+                          <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[#e5eeff]/70 dark:bg-slate-700/50 border-b border-[#e5eeff] dark:border-slate-700">
+                            <span className="flex items-center gap-1 text-[12px] font-semibold text-[#0b1c30] dark:text-white min-w-0">
+                              <Icon name="pin_drop" className="text-[14px] flex-shrink-0" />
+                              <span className="truncate">{group.address || t('fleet_itinerary_no_address')}</span>
                             </span>
-                            {stop.orderNumber && (
-                              <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#131b2e] text-[11px] rounded font-mono">
-                                {stop.orderNumber}
-                              </span>
-                            )}
+                            <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#004ac6] text-[11px] rounded-full font-semibold whitespace-nowrap">
+                              {t('fleet_itinerary_group_count', { count: group.deliveries.length })}
+                            </span>
                           </div>
-                          <span
-                            className={`text-[11px] font-semibold whitespace-nowrap ${
-                              isCurrent ? 'text-[#004ac6] dark:text-blue-400' : 'text-[#565e74] dark:text-slate-400'
-                            }`}
-                          >
-                            {stop.time}
-                          </span>
+                        )}
+
+                        <div className="flex flex-col divide-y divide-[#e5eeff]/70 dark:divide-slate-700/50">
+                          {group.deliveries.map((delivery) => {
+                            const order = delivery.assignOrder;
+                            // The driver has picked up this stop and is on the way (not yet delivered).
+                            const isCurrentTrip = !!delivery.isStarted && !delivery.isCompleted;
+                            const startedAt = delivery.startedAt
+                              ? new Date(delivery.startedAt).toLocaleString([], {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : undefined;
+
+                            return (
+                              <div
+                                key={delivery.id}
+                                className={`flex items-start gap-3 p-3 ${
+                                  isCurrentTrip ? 'bg-[#dae2fd]/40 dark:bg-blue-950/30' : ''
+                                }`}
+                              >
+                                <div
+                                  className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
+                                    delivery.isCompleted
+                                      ? 'bg-[#2563eb] text-white'
+                                      : isCurrentTrip
+                                      ? 'bg-[#004ac6] text-white ring-4 ring-[#dae2fd] dark:ring-blue-950 shadow-md animate-pulse'
+                                      : 'bg-[#e5eeff] dark:bg-slate-700 text-[#565e74] dark:text-slate-300'
+                                  }`}
+                                >
+                                  <Icon
+                                    name={delivery.isCompleted ? 'check' : isCurrentTrip ? 'navigation' : 'local_shipping'}
+                                    className="text-[16px]"
+                                  />
+                                </div>
+
+                                <div className="flex flex-col flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[13px] font-bold text-[#0b1c30] dark:text-white truncate">
+                                        {order?.fullName || t('fleet_itinerary_no_recipient')}
+                                      </span>
+                                      {order?.uid && (
+                                        <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#131b2e] text-[11px] rounded font-mono">
+                                          {order.uid}
+                                        </span>
+                                      )}
+                                      {order?.isPriority && (
+                                        <span className="px-1.5 py-0.5 text-[10px] rounded uppercase font-semibold bg-[#bc4800] text-white">
+                                          {t('fleet_order_priority')}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {delivery.isCompleted ? (
+                                      <span className="px-1.5 py-0.5 bg-[#dae2fd] text-[#004ac6] text-[11px] rounded font-semibold whitespace-nowrap">
+                                        {t('fleet_itinerary_completed')}
+                                      </span>
+                                    ) : isCurrentTrip ? (
+                                      <span className="px-1.5 py-0.5 bg-[#004ac6] text-white text-[11px] rounded font-semibold whitespace-nowrap flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                                        {t('fleet_itinerary_current_trip')}
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.5 bg-[#ffdbcd] text-[#943700] text-[11px] rounded font-semibold whitespace-nowrap">
+                                        {t('fleet_itinerary_out_for_delivery')}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[#565e74] dark:text-slate-400 text-[12px] mt-1">
+                                    {/* Grouped stops show the shared address in the group header instead. */}
+                                    {!isGrouped && group.address && (
+                                      <span className="flex items-center gap-1">
+                                        <Icon name="pin_drop" className="text-[14px]" />
+                                        {group.address}
+                                      </span>
+                                    )}
+                                    {order?.phone && (
+                                      <span className="flex items-center gap-1">
+                                        <Icon name="call" className="text-[14px]" />
+                                        {order.phone}
+                                      </span>
+                                    )}
+                                    {isCurrentTrip && startedAt && (
+                                      <span className="flex items-center gap-1 text-[#004ac6] dark:text-blue-400 font-semibold">
+                                        <Icon name="schedule" className="text-[14px]" />
+                                        {t('fleet_itinerary_started_at', { time: startedAt })}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-
-                        <span className="text-[12px] text-[#0b1c30] dark:text-slate-200 mt-0.5">{stop.details}</span>
-
-                        {stop.isHighValueVault && (
-                          <div className="flex items-center gap-1 mt-1.5">
-                            <span className="px-1.5 py-0.5 bg-[#ffdbcd] text-[#943700] text-[11px] rounded font-semibold">
-                              {t('fleet_high_value')}
-                            </span>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="bg-[#eff4ff]/60 dark:bg-slate-800/60 p-3 rounded-lg flex flex-wrap items-center justify-between gap-2.5 text-[#565e74] dark:text-slate-400 text-[11px]">
-                <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-1">
-                    <Icon name="speed" className="text-[16px] text-[#004ac6] dark:text-blue-400" />
-                    {t('fleet_efficiency')}: <strong>94%</strong>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Icon name="eco" className="text-[16px]" />
-                    {t('fleet_co2_saved')}: <strong>14.2 kg</strong>
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Icon name="sync" className="text-[16px] text-[#004ac6] dark:text-blue-400" />
-                  <span>{t('fleet_telematics', { seconds: 22 })}</span>
-                </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}

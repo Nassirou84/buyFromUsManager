@@ -1,5 +1,5 @@
-import { ApiOrder, ApiOrderProcessed, variantImageUrl, variantLabel } from '@/api/user/get-customer-orders';
-import { Order, OrderProcessing, OrderStatus, RawOrderStatus } from './types';
+import { ApiAssignDelivery, ApiOrder, ApiOrderProcessed, variantImageUrl, variantLabel } from '@/api/user/get-customer-orders';
+import { Order, OrderAssignDelivery, OrderProcessing, OrderStatus, RawOrderStatus } from './types';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -99,6 +99,20 @@ const mapProcessing = (records?: ApiOrderProcessed[] | null): OrderProcessing | 
   };
 };
 
+const mapAssignDelivery = (assign?: ApiAssignDelivery | null): OrderAssignDelivery | undefined => {
+  if (!assign) return undefined;
+  const driverName = [assign.driver?.firstName, assign.driver?.lastName].filter(Boolean).join(' ').trim();
+  return {
+    driverName: text(driverName),
+    driverPhone: text(assign.driver?.phone),
+    assignedAt: formatDate(assign.createdAt),
+    startedAt: formatDate(assign.startedAt),
+    completedAt: formatDate(assign.completedAt),
+    signedName: text(assign.signedName),
+    isCompleted: assign.isCompleted ?? false,
+  };
+};
+
 export const mapApiOrderToFulfillment = (order: ApiOrder, t: Translate): Order => {
   const createdAt = order.createdAt ? new Date(order.createdAt) : null;
   const status = mapStatus(order.status);
@@ -139,6 +153,7 @@ export const mapApiOrderToFulfillment = (order: ApiOrder, t: Translate): Order =
     status,
     isPriority: order.isPriority ?? false,
     processing: mapProcessing(order.orderProcesseds),
+    assignDelivery: mapAssignDelivery(order.assignDelivery),
     dateStr: createdAt ? createdAt.toLocaleString() : EMPTY,
     timestamp: createdAt ? createdAt.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : EMPTY,
     paymentMethod: '',
