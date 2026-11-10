@@ -69,6 +69,23 @@ export type ApiOrderProcessed = {
   } | null;
 };
 
+/** Delivery assignment for an order (AssignDelivery), returned by the single-order
+ * endpoint in the order:read group. The embedded driver exposes only id/name/phone. */
+export type ApiAssignDelivery = {
+  id: number;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  signedName?: string | null;
+  isCompleted?: boolean | null;
+  driver?: {
+    id: number;
+    firstName?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+  } | null;
+};
+
 export type ApiPayment = {
   id: number;
   transactionId?: string | null;
@@ -102,6 +119,8 @@ export type ApiOrder = {
   fulfillmentNote?: string | null;
   /** Supplier-side processing records, returned by the single-order endpoint (order:read:admin). */
   orderProcesseds?: ApiOrderProcessed[] | null;
+  /** Delivery assignment (driver + timing), returned by the single-order endpoint (order:read). */
+  assignDelivery?: ApiAssignDelivery | null;
   products?: ApiOrderItem[];
 };
 

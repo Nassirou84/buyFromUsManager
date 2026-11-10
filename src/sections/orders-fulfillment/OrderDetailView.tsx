@@ -122,9 +122,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
 
   // Supplier-side journey, revealed stage by stage as each transition's details land.
   const p = order.processing;
+  const a = order.assignDelivery;
   const hasTransit = !!(p && (p.shippedFromUsaAt || p.shippedBy || p.shippingReceipt || p.shippingNote || p.shippingCost != null || p.pickupAddress || p.pickupContact || p.courrier));
-  const hasArrived = !!(p && (p.collectedAt || p.collectionNote));
-  const hasDelivered = order.rawStatus === 'delivered';
+  const hasArrived = !!(p && (p.collectedAt || p.collectionNote)) || !!a;
 
   const advanceTo = (status: string) => {
     updateStatus(
@@ -504,19 +504,32 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
                 accentBg="bg-[#ffdbcd] text-[#943700] dark:bg-amber-900/40 dark:text-amber-300"
               >
                 <StageField label={t('orders_stage_note')} value={p.collectionNote} />
-              </StageCard>
-            )}
 
-            {/* Delivered */}
-            {hasDelivered && (
-              <StageCard
-                icon="check_circle"
-                title={t('orders_stage_delivered')}
-                accentBg="bg-[#dcfce7] text-[#15803d] dark:bg-green-950 dark:text-green-300"
-              >
-                <p className="text-[12.5px] text-[#565e74] dark:text-slate-400 leading-snug">
-                  {t('orders_stage_delivered_desc')}
-                </p>
+                {/* Delivery assignment — driver and timing, from the order's assignDelivery. */}
+                {a && (
+                  <div className="flex flex-col gap-1.5 mt-1 pt-2.5 border-t border-[#f0f4ff] dark:border-slate-800">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#565e74] dark:text-slate-400">
+                        {t('orders_assign_title')}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 text-[10.5px] font-semibold rounded ${
+                          a.isCompleted
+                            ? 'bg-[#dcfce7] text-[#15803d] dark:bg-green-950 dark:text-green-300'
+                            : 'bg-[#dae2fd] text-[#004ac6] dark:bg-blue-950 dark:text-blue-300'
+                        }`}
+                      >
+                        {a.isCompleted ? t('orders_assign_completed') : t('orders_assign_in_progress')}
+                      </span>
+                    </div>
+                    <StageField label={t('orders_assign_driver')} value={a.driverName} />
+                    <StageField label={t('orders_assign_driver_phone')} value={a.driverPhone} mono />
+                    <StageField label={t('orders_assign_assigned_at')} value={a.assignedAt} />
+                    <StageField label={t('orders_assign_started_at')} value={a.startedAt} />
+                    <StageField label={t('orders_assign_completed_at')} value={a.completedAt} />
+                    <StageField label={t('orders_assign_signed_by')} value={a.signedName} />
+                  </div>
+                )}
               </StageCard>
             )}
           </div>

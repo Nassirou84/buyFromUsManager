@@ -80,6 +80,19 @@ export interface OrderProcessing {
   collectionNote?: string;
 }
 
+/** Delivery assignment mapped from the backend AssignDelivery. Dates are pre-formatted
+ * for display; fields are only set once the assignment carries them. */
+export interface OrderAssignDelivery {
+  driverName?: string;
+  driverPhone?: string;
+  /** When the order was assigned to the driver (AssignDelivery.createdAt). */
+  assignedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  signedName?: string;
+  isCompleted: boolean;
+}
+
 export interface Order {
   id: string;
   /** Backend order uid (e.g. "O-a1b2c3"), used for the detail route. */
@@ -101,6 +114,8 @@ export interface Order {
   isPriority: boolean;
   /** Supplier-side processing record, when the order has been processed. */
   processing?: OrderProcessing;
+  /** Delivery assignment (driver + timing), set once the order has been assigned to a driver. */
+  assignDelivery?: OrderAssignDelivery;
   dateStr: string;
   timestamp: string;
   slaRemaining?: string;

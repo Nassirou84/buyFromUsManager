@@ -12,6 +12,19 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
+// Per-lifecycle-status badge styling, so each raw backend status reads distinctly
+// (the in_transit / arrived_in_facility / out_for_delivery stages no longer share one look).
+// Accent colours mirror the fulfillment-journey stage cards in OrderDetailView.
+const STATUS_BADGE: Record<string, { classes: string; icon?: string; pulse?: boolean }> = {
+  placed: { classes: 'bg-[#e5eeff] text-[#565e74] dark:bg-slate-700 dark:text-slate-200', icon: 'fiber_new' },
+  processed: { classes: 'bg-[#ffdbcd] text-[#943700] dark:bg-amber-900/40 dark:text-amber-300', icon: 'shopping_cart_checkout' },
+  in_transit: { classes: 'bg-[#ede9fe] text-[#6d28d9] dark:bg-violet-950 dark:text-violet-300', icon: 'flight_takeoff', pulse: true },
+  arrived_in_facility: { classes: 'bg-[#cffafe] text-[#0e7490] dark:bg-cyan-950 dark:text-cyan-300', icon: 'warehouse' },
+  out_for_delivery: { classes: 'bg-[#dae2fd] text-[#004ac6] dark:bg-blue-950 dark:text-blue-300', icon: 'local_shipping', pulse: true },
+  delivered: { classes: 'bg-[#dcfce7] text-[#15803d] dark:bg-green-950 dark:text-green-300', icon: 'check_circle' },
+  cancelled: { classes: 'bg-[#ffdad6] text-[#93000a] dark:bg-red-950/40 dark:text-red-300', icon: 'cancel' },
+};
+
 interface OrdersViewProps {
   orders: Order[];
   /** Admin KPI summary (GET /admin/orders-summary); undefined while it loads. */
@@ -111,47 +124,22 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, summary, isLoadi
   // Both the status column and the uid search are applied by the backend
   // (GET /orders?status[]=…&uid=…), so the returned page is already filtered.
 
-  // Shows the order's actual current status (raw backend status), coloured by the
-  // collapsed column it belongs to. The label falls back to the collapsed status
-  // for any raw value without a dedicated key.
+  // Shows the order's actual current status (raw backend status), with a distinct
+  // colour and icon per lifecycle stage (see STATUS_BADGE). The label falls back to
+  // "pending" for any raw value without a dedicated key.
   const getStatusBadge = (order: Order) => {
     const label = t(`customers_order_status_${order.rawStatus}`, { defaultValue: t('pending') });
-    switch (order.status) {
-      case 'processing':
-        return (
-          <span className="px-2.5 py-0.5 bg-[#ffdbcd] text-[#943700] text-[11px] font-bold rounded flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#bc4800] animate-ping"></span>
-            {label}
-          </span>
-        );
-      case 'shipped':
-        return (
-          <span className="px-2.5 py-0.5 bg-[#dae2fd] text-[#004ac6] text-[11px] font-bold rounded flex items-center gap-1">
-            <Icon name="local_shipping" className="text-[13px]"/>
-            {label}
-          </span>
-        );
-      case 'delivered':
-        return (
-          <span className="px-2.5 py-0.5 bg-[#eff4ff] text-[#004ac6] text-[11px] font-bold rounded flex items-center gap-1">
-            <Icon name="check_circle" className="text-[13px]"/>
-            {label}
-          </span>
-        );
-      case 'cancelled':
-        return (
-          <span className="px-2.5 py-0.5 bg-[#e5eeff] text-[#565e74] text-[11px] font-bold rounded flex items-center gap-1">
-            <Icon name="cancel" className="text-[13px]"/>
-            {label}
-          </span>
-        );
-      default:
-        return (
-          <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 text-[11px] font-bold rounded">
-            {label}
-          </span>
-        );
-    }
+    const cfg = STATUS_BADGE[order.rawStatus] ?? { classes: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200' };
+    return (
+      <span className={`px-2.5 py-0.5 ${cfg.classes} text-[11px] font-bold rounded flex items-center gap-1`}>
+        {cfg.pulse ? (
+          <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping"></span>
+        ) : cfg.icon ? (
+          <Icon name={cfg.icon} className="text-[13px]" />
+        ) : null}
+        {label}
+      </span>
+    );
   };
 
   return (
