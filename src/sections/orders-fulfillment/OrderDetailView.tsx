@@ -96,11 +96,13 @@ interface OrderDetailViewProps {
   order: Order;
   onUpdateOrder: (updated: Order) => void;
   onOpenInvoice: (order: Order) => void;
+  /** Open the printable warehouse packaging slip for this order. */
+  onOpenPackagingSlip: (order: Order) => void;
   onBack: () => void;
 }
 
 /** Full fulfillment workbench for a single order, shown on the nested [uid] route. */
-export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdateOrder, onOpenInvoice, onBack }) => {
+export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdateOrder, onOpenInvoice, onOpenPackagingSlip, onBack }) => {
   const { t } = useLocales();
   const [newNoteText, setNewNoteText] = useState('');
   const [isProcessingOpen, setIsProcessingOpen] = useState(false);
@@ -363,6 +365,15 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
             >
               <Icon name="receipt_long" className="text-[17px]" />
               <span>{t('tax_invoice_pdf')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onOpenPackagingSlip(order)}
+              className="px-3 py-1.5 rounded-lg bg-[#e5eeff] text-[#0b1c30] hover:bg-[#dce9ff] dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 text-[12.5px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Icon name="print" className="text-[17px]" />
+              <span>{t('print_packaging_slip')}</span>
             </button>
           </div>
         </div>

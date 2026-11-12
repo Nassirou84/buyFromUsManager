@@ -126,4 +126,15 @@ body {
   .receipt-page {
     margin: 10mm;
   }
+
+  /* The packaging slip prints on a 4in x 6in label (the page size itself is set
+     by the modal while it is open, so the receipt keeps the user's paper size).
+     The on-screen preview is a fixed 4x6 box; on paper the label IS the page, so
+     those bounds are dropped and the sheet just fills it inside a small margin. */
+  .receipt-page.packaging-slip-page {
+    margin: 3mm;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+  }
 }

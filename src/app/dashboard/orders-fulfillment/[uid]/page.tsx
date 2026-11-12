@@ -8,6 +8,7 @@ import { useGetOrderByUid } from '@/api/user/get-order';
 import { ORDER_DETAIL_SEED_KEY } from '@/api/order/get-orders';
 import { OrderDetailView } from '@/sections/orders-fulfillment/OrderDetailView';
 import { TaxInvoiceModal } from '@/sections/orders-fulfillment/TaxInvoiceModal';
+import { PackagingSlipModal } from '@/sections/orders-fulfillment/PackagingSlipModal';
 import { mapApiOrderToFulfillment } from '@/sections/orders-fulfillment/mapper';
 import { Order } from '@/sections/orders-fulfillment/types';
 
@@ -19,6 +20,7 @@ export default function Page() {
   const uid = Array.isArray(params.uid) ? params.uid[0] : (params.uid ?? '');
 
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
+  const [packagingSlipOrder, setPackagingSlipOrder] = useState<Order | null>(null);
   // Session-local edits (notes, dispatch) layered on top of the resolved order.
   const [edited, setEdited] = useState<Order | null>(null);
 
@@ -59,12 +61,18 @@ export default function Page() {
         order={order}
         onUpdateOrder={setEdited}
         onOpenInvoice={setInvoiceOrder}
+        onOpenPackagingSlip={setPackagingSlipOrder}
         onBack={backToList}
       />
       <TaxInvoiceModal
         order={invoiceOrder}
         isOpen={!!invoiceOrder}
         onClose={() => setInvoiceOrder(null)}
+      />
+      <PackagingSlipModal
+        order={packagingSlipOrder}
+        isOpen={!!packagingSlipOrder}
+        onClose={() => setPackagingSlipOrder(null)}
       />
     </>
   );
