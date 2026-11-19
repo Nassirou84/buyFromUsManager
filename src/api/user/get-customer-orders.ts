@@ -18,6 +18,8 @@ export type ApiOrderItem = {
   id: number;
   quantity?: number | null;
   unitPrice?: number | null;
+  /** Per-item serial number recorded before dispatch (order:read). */
+  productSerialNumber?: string | null;
   variant?: string | ApiOrderItemVariant | null;
   product?: {
     id: number;
@@ -58,6 +60,9 @@ export type ApiOrderProcessed = {
   pickupContact?: string | null;
   collectedAt?: string | null;
   collectionNote?: string | null;
+  /** Package tracking numbers recorded before dispatch (OrderProcessed.trackingNumbers).
+   * Plain data, independent of the Courrier partner. */
+  trackingNumbers?: { trackingNumber: string; carrierName: string }[] | null;
   /** Carrier partner assigned to the shipment (Courrier, order:read:admin group). */
   courrier?: {
     id: number;

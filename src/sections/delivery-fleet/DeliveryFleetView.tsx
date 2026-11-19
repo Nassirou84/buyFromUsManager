@@ -9,7 +9,7 @@ import useCreateDriver from '@/api/user/create-driver';
 import useGetDrivers, { ApiDriver, GET_DRIVERS_QUERY_KEY } from '@/api/user/get-drivers';
 import useGetOrdersAwaitingDelivery, { GET_ORDERS_AWAITING_DELIVERY_QUERY_KEY } from '@/api/order/get-orders-awaiting-delivery';
 import useBatchAssignDelivery from '@/api/order/batch-assign-delivery';
-import useGetAssignDeliveries from '@/api/order/get-assign-deliveries';
+import useGetAssignDeliveries, { GET_ASSIGN_DELIVERIES_QUERY_KEY } from '@/api/order/get-assign-deliveries';
 import { ApiOrder } from '@/api/user/get-customer-orders';
 
 interface DeliveryFleetViewProps {
@@ -179,6 +179,10 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
           );
           queryClient.invalidateQueries({ queryKey: [GET_ORDERS_AWAITING_DELIVERY_QUERY_KEY] });
           queryClient.invalidateQueries({ queryKey: [GET_DRIVERS_QUERY_KEY] });
+          // Refresh the driver's itinerary so the newly assigned deliveries appear
+          // without a page reload. Invalidating the key prefix covers whichever
+          // driver's route is currently shown.
+          queryClient.invalidateQueries({ queryKey: [GET_ASSIGN_DELIVERIES_QUERY_KEY] });
           toast.success(t('fleet_toast_batch_assigned', { count: selectedOrders.length, name: batchCourier.name }));
         },
         onError: () => {

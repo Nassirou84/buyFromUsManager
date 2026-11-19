@@ -12,6 +12,11 @@ import { ProcessingConfirmModal, ProcessingDetails } from './ProcessingConfirmMo
 import { TransitConfirmModal, TransitDetails } from './TransitConfirmModal';
 import { ArrivedConfirmModal, ArrivedDetails } from './ArrivedConfirmModal';
 import { OutForDeliveryConfirmModal, OutForDeliveryDetails } from './OutForDeliveryConfirmModal';
+import { SerialNumbersModal } from './SerialNumbersModal';
+import { TrackingNumbersModal } from './TrackingNumbersModal';
+import { TrackingNumberEntry } from '@/api/order/add-tracking-numbers';
+import { useQueryClient } from '@tanstack/react-query';
+import { GET_ORDER_BY_UID_QUERY_KEY } from '@/api/user/get-order';
 import { Order } from './types';
 import { formatWithCurrency } from '@/utils/lodash';
 
@@ -104,11 +109,14 @@ interface OrderDetailViewProps {
 /** Full fulfillment workbench for a single order, shown on the nested [uid] route. */
 export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdateOrder, onOpenInvoice, onOpenPackagingSlip, onBack }) => {
   const { t } = useLocales();
+  const queryClient = useQueryClient();
   const [newNoteText, setNewNoteText] = useState('');
   const [isProcessingOpen, setIsProcessingOpen] = useState(false);
   const [isTransitOpen, setIsTransitOpen] = useState(false);
   const [isArrivedOpen, setIsArrivedOpen] = useState(false);
   const [isOutForDeliveryOpen, setIsOutForDeliveryOpen] = useState(false);
+  const [isSerialOpen, setIsSerialOpen] = useState(false);
+  const [isTrackingOpen, setIsTrackingOpen] = useState(false);
   const { mutate: addNote, isPending: isPostingNote } = useAddFulfillmentNote();
   const { mutate: updateStatus, isPending: isAdvancing } = useUpdateOrderStatus();
   const { mutate: markProcessed, isPending: isProcessing } = useMarkOrderProcessed();
@@ -122,10 +130,24 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
     ? TRACKING_LIFECYCLE[currentStepIndex + 1]
     : null;
 
+  // Dispatch gate: an order can only move into "out_for_delivery" once every item
+  // carries a serial number. Until then, the advance button is hidden and only the
+  // "add serial number" button is offered.
+  const allItemsHaveSerial = order.items.length > 0 && order.items.every((it) => !!it.serialNumber?.trim());
+  const serialGateBlocked = nextStatus === 'out_for_delivery' && !allItemsHaveSerial;
+
+  // Transit gate: an order can only move into "in_transit" once it carries at least one
+  // package tracking number (the backend rejects the transition otherwise). Until then,
+  // the advance button is hidden and only the "add tracking numbers" button is offered.
+  const hasTracking = (order.processing?.trackingNumbers?.length ?? 0) > 0;
+  const trackingGateBlocked = nextStatus === 'in_transit' && !hasTracking;
+  // Either gate hides the advance button for its step.
+  const advanceGateBlocked = serialGateBlocked || trackingGateBlocked;
+
   // Supplier-side journey, revealed stage by stage as each transition's details land.
   const p = order.processing;
   const a = order.assignDelivery;
-  const hasTransit = !!(p && (p.shippedFromUsaAt || p.shippedBy || p.shippingReceipt || p.shippingNote || p.shippingCost != null || p.pickupAddress || p.pickupContact || p.courrier));
+  const hasTransit = !!(p && (p.shippedFromUsaAt || p.shippedBy || p.shippingReceipt || p.shippingNote || p.shippingCost != null || p.pickupAddress || p.pickupContact || p.courrier || p.trackingNumbers?.length));
   const hasArrived = !!(p && (p.collectedAt || p.collectionNote)) || !!a;
 
   const advanceTo = (status: string) => {
@@ -251,38 +273,63 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
     );
   };
 
-  // Confirm the parcel was collected and verified, then move the order to
-  // "arrived_in_facility". The backend rejects a mismatched reference, so surface
-  // that distinctly and keep the modal open for a retry.
+  // Confirm one parcel by its tracking number. The backend matches on the last 4
+  // characters and only moves the order to "arrived_in_facility" once every parcel
+  // has been confirmed, so reflect each confirmation and keep the modal open until
+  // the last one lands. Mismatches are surfaced distinctly for a retry.
   const handleConfirmArrived = (details: ArrivedDetails) => {
-    const collectedAt = new Date().toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const submittedLastFour = details.trackingNumber.trim().slice(-4);
     markArrived(
       {
         uid: order.uid,
-        lastFour: details.lastFour,
+        trackingNumber: details.trackingNumber,
         collectionNote: details.collectionNote || undefined,
       },
       {
-        onSuccess: () => {
-          onUpdateOrder({
-            ...order,
-            rawStatus: 'arrived_in_facility',
-            processing: {
-              ...order.processing,
-              collectedAt,
-              collectionNote: details.collectionNote || order.processing?.collectionNote,
-            },
+        onSuccess: (res) => {
+          // Stamp the parcel the backend matched (first pending one whose last 4 match)
+          // so the modal's checklist updates immediately.
+          let stamped = false;
+          const updatedTracking = (order.processing?.trackingNumbers ?? []).map((tn) => {
+            if (!stamped && !tn.arrivedAt && tn.trackingNumber.slice(-4) === submittedLastFour) {
+              stamped = true;
+              return { ...tn, arrivedAt: new Date().toISOString() };
+            }
+            return tn;
           });
-          setIsArrivedOpen(false);
-          toast.success(t('orders_status_updated', { status: t('customers_order_status_arrived_in_facility') }));
+
+          if (res.allArrived) {
+            const collectedAt = new Date().toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            onUpdateOrder({
+              ...order,
+              rawStatus: 'arrived_in_facility',
+              processing: {
+                ...order.processing,
+                trackingNumbers: updatedTracking,
+                collectedAt,
+                collectionNote: details.collectionNote || order.processing?.collectionNote,
+              },
+            });
+            setIsArrivedOpen(false);
+            toast.success(t('orders_status_updated', { status: t('customers_order_status_arrived_in_facility') }));
+          } else {
+            // More parcels still to confirm — update the checklist and keep the modal open.
+            onUpdateOrder({
+              ...order,
+              processing: { ...order.processing, trackingNumbers: updatedTracking },
+            });
+            toast.success(t('orders_arrived_parcel_confirmed_toast', { done: res.arrivedCount, total: res.trackingNumbersCount }));
+          }
         },
         onError: (err: unknown) => {
           const message = (err as { error?: string })?.error;
-          toast.error(
-            message === 'lastFour_does_not_match_seller_order_reference'
-              ? t('orders_arrived_ref_mismatch')
-              : t('orders_status_error')
-          );
+          const errorKey: Record<string, string> = {
+            tracking_number_does_not_match: 'orders_arrived_tracking_mismatch',
+            tracking_number_already_confirmed: 'orders_arrived_tracking_already',
+            order_has_no_tracking_numbers: 'orders_arrived_no_tracking',
+            trackingNumber_is_required: 'orders_arrived_tracking_required',
+          };
+          toast.error(message && errorKey[message] ? t(errorKey[message]) : t('orders_status_error'));
         },
       }
     );
@@ -303,6 +350,32 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
         onError: () => toast.error(t('orders_status_error')),
       }
     );
+  };
+
+  // The serials are persisted by the modal (POST /api/order_items/add_serial_number), one
+  // item at a time or in bulk. Reflect each saved item on the order immediately (this
+  // also drives the dispatch gate), then refetch so the backend record wins. The modal
+  // owns the success toast.
+  const handleSerialsSaved = (serialsByItemId: Record<string, string>) => {
+    onUpdateOrder({
+      ...order,
+      items: order.items.map((it) =>
+        serialsByItemId[it.id] ? { ...it, serialNumber: serialsByItemId[it.id] } : it
+      ),
+    });
+    queryClient.invalidateQueries({ queryKey: [GET_ORDER_BY_UID_QUERY_KEY, order.uid] });
+  };
+
+  // Tracking numbers are persisted by the modal (POST /api/admin/orders/{uid}/tracking-numbers),
+  // one or many at a time. Reflect the full saved list on the order immediately (this also
+  // satisfies the transit gate), then refetch so the backend record wins. The modal owns
+  // the success toast.
+  const handleTrackingSaved = (trackingNumbers: TrackingNumberEntry[]) => {
+    onUpdateOrder({
+      ...order,
+      processing: { ...order.processing, trackingNumbers },
+    });
+    queryClient.invalidateQueries({ queryKey: [GET_ORDER_BY_UID_QUERY_KEY, order.uid] });
   };
 
   const handlePostNote = (e: React.FormEvent) => {
@@ -442,16 +515,59 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
           {/* "out_for_delivery" is the last operator-driven step; the move to
               "delivered" is not done from here, so hide the next-status button. */}
           {!isCancelled && nextStatus && order.rawStatus !== 'out_for_delivery' && (
-            <div className="flex justify-end pt-4">
-              <button
-                type="button"
-                onClick={handleAdvanceStatus}
-                disabled={isAdvancing || isDispatching || isCollecting || isDispatchingOut}
-                className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-[#004ac6] hover:bg-[#003ea8] text-white text-[12.5px] font-bold rounded-lg shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              >
-                <Icon name={isAdvancing ? 'progress_activity' : 'arrow_forward'} className={`text-[17px] ${isAdvancing ? 'animate-spin' : ''}`} />
-                <span>{t('orders_next_step', { status: t(`customers_order_status_${nextStatus}`) })}</span>
-              </button>
+            <div className="flex flex-wrap justify-end items-center gap-2 pt-4">
+              {/* The order can't go out for delivery until every item has a serial
+                  number, so flag what's still missing next to the actions. */}
+              {serialGateBlocked && (
+                <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-[#bc4800] dark:text-amber-300 mr-auto">
+                  <Icon name="error" className="text-[15px] shrink-0" />
+                  {t('orders_serial_gate_hint')}
+                </span>
+              )}
+              {/* The order can't ship until it carries at least one tracking number. */}
+              {trackingGateBlocked && (
+                <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-[#bc4800] dark:text-amber-300 mr-auto">
+                  <Icon name="error" className="text-[15px] shrink-0" />
+                  {t('orders_tracking_gate_hint')}
+                </span>
+              )}
+              {/* Before shipping, the operator records the package tracking number(s).
+                  Offered only on the step into "in_transit". */}
+              {nextStatus === 'in_transit' && (
+                <button
+                  type="button"
+                  onClick={() => setIsTrackingOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-white dark:bg-[#131b2e] border border-[#6d28d9] dark:border-violet-500 text-[#6d28d9] dark:text-violet-300 hover:bg-[#ede9fe] dark:hover:bg-violet-950/40 text-[12.5px] font-bold rounded-lg shadow-2xs transition-all cursor-pointer"
+                >
+                  <Icon name="local_shipping" className="text-[17px]" />
+                  <span>{hasTracking ? t('orders_tracking_button_more') : t('orders_tracking_button')}</span>
+                </button>
+              )}
+              {/* Before dispatch, the operator records each product's serial number.
+                  Offered only on the step into "out_for_delivery". */}
+              {nextStatus === 'out_for_delivery' && (
+                <button
+                  type="button"
+                  onClick={() => setIsSerialOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-white dark:bg-[#131b2e] border border-[#004ac6] dark:border-blue-500 text-[#004ac6] dark:text-blue-300 hover:bg-[#eff4ff] dark:hover:bg-blue-950/40 text-[12.5px] font-bold rounded-lg shadow-2xs transition-all cursor-pointer"
+                >
+                  <Icon name="qr_code_scanner" className="text-[17px]" />
+                  <span>{t('orders_serial_button')}</span>
+                </button>
+              )}
+              {/* The advance button only appears once the step's gate (serial or
+                  tracking) is satisfied. */}
+              {!advanceGateBlocked && (
+                <button
+                  type="button"
+                  onClick={handleAdvanceStatus}
+                  disabled={isAdvancing || isDispatching || isCollecting || isDispatchingOut}
+                  className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-[#004ac6] hover:bg-[#003ea8] text-white text-[12.5px] font-bold rounded-lg shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Icon name={isAdvancing ? 'progress_activity' : 'arrow_forward'} className={`text-[17px] ${isAdvancing ? 'animate-spin' : ''}`} />
+                  <span>{t('orders_next_step', { status: t(`customers_order_status_${nextStatus}`) })}</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -498,6 +614,18 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
                 <StageField label={t('orders_stage_shipped_by')} value={p.courrier?.name ?? p.shippedBy} />
                 <StageField label={t('orders_stage_carrier_contact')} value={p.courrier?.contact} mono />
                 <StageField label={t('orders_stage_shipping_cost')} value={p.shippingCost != null ? formatUsd(p.shippingCost) : undefined} />
+                {/* Package tracking number(s), one row per package (number + carrier). */}
+                {!!p.trackingNumbers?.length && (
+                  <div className="flex flex-col gap-1 pt-1">
+                    <span className="text-[12.5px] text-[#565e74] dark:text-slate-400">{t('orders_stage_tracking')}</span>
+                    {p.trackingNumbers.map((tn, i) => (
+                      <div key={`${tn.trackingNumber}-${i}`} className="flex items-center justify-between gap-3 text-[12.5px]">
+                        <span className="font-semibold font-mono text-[11.5px] text-[#0b1c30] dark:text-white break-all">{tn.trackingNumber}</span>
+                        <span className="text-[#565e74] dark:text-slate-400 shrink-0">{tn.carrierName}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <StageField label={t('orders_stage_pickup_address')} value={p.courrier?.pickupLocation ?? p.pickupAddress} />
                 <StageField label={t('orders_stage_pickup_contact')} value={p.courrier?.pickupContact ?? p.pickupContact} mono />
                 <StageField label={t('orders_stage_usa_address')} value={p.courrier?.usaAddress} />
@@ -727,6 +855,20 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({ order, onUpdat
         order={order}
         onConfirm={handleConfirmOutForDelivery}
         isPending={isDispatchingOut}
+      />
+
+      <SerialNumbersModal
+        isOpen={isSerialOpen}
+        onClose={() => setIsSerialOpen(false)}
+        order={order}
+        onSaved={handleSerialsSaved}
+      />
+
+      <TrackingNumbersModal
+        isOpen={isTrackingOpen}
+        onClose={() => setIsTrackingOpen(false)}
+        order={order}
+        onSaved={handleTrackingSaved}
       />
     </div>
   );
