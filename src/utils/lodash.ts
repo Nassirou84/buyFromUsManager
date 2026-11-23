@@ -3,7 +3,7 @@ import FingerprintJS from '@fingerprintjs/fingerprintjs';
 
 function formatWithSeparator(
   value: number | string,
-  separator: string = ',',
+  separator: string = ' ',
   decimalSeparator: string = '.'
 ): string {
   const str = typeof value === 'number' ? value.toString() : value;

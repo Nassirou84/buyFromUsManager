@@ -20,7 +20,7 @@ declare global {
 }
 
 export interface OutForDeliveryDetails {
-  /** Value decoded from the receipt QR code, used to confirm the right box is dispatched. */
+  /** Value decoded from the packaging slip QR code, used to confirm the right box is dispatched. */
   scannedCode: string;
 }
 
@@ -210,7 +210,7 @@ export const OutForDeliveryConfirmModal: React.FC<OutForDeliveryConfirmModalProp
   const hasScan = trimmedCode.length > 0;
   const isMatch = hasScan && trimmedCode === order.uid;
 
-  // Confirm only once the receipt QR code has been scanned and matches this order.
+  // Confirm only once the packaging slip QR code has been scanned and matches this order.
   const canConfirm = isMatch && !isPending;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -251,7 +251,7 @@ export const OutForDeliveryConfirmModal: React.FC<OutForDeliveryConfirmModalProp
             </div>
           </div>
 
-          {/* Step 2 — print the receipt label */}
+          {/* Step 2 — print the packaging slip */}
           <div className={CARD}>
             <div className="flex items-center gap-2.5">
               <span className={STEP}>2</span>
@@ -262,7 +262,7 @@ export const OutForDeliveryConfirmModal: React.FC<OutForDeliveryConfirmModalProp
             </div>
           </div>
 
-          {/* Step 3 — scan the receipt QR code */}
+          {/* Step 3 — scan the packaging slip QR code */}
           <div className={CARD}>
             <div className="flex items-center gap-2.5 mb-3">
               <span className={STEP}>3</span>

@@ -41,6 +41,8 @@ export interface OrderItem {
   quantity: number;
   image: string;
   imageAlt: string;
+  /** Serial number recorded before dispatch (OrderItem.productSerialNumber). */
+  serialNumber?: string;
   /** Thumbnail for the ordered variant, shown as a miniature when present. */
   variantImage?: string;
   /** Storefront product slug, for the "view on storefront" link. */
@@ -65,6 +67,11 @@ export interface OrderProcessing {
   shippingCost?: number;
   shippingReceipt?: string;
   shippingNote?: string;
+  /** Package tracking numbers recorded before dispatch (OrderProcessed.trackingNumbers).
+   * At least one is required before the order can move to in-transit. `arrivedAt` is
+   * stamped (ISO string) once that parcel is confirmed arrived at the facility; the
+   * order only moves to "arrived_in_facility" once every parcel carries one. */
+  trackingNumbers?: { trackingNumber: string; carrierName: string; arrivedAt?: string }[];
   /** Assigned carrier partner, surfaced from the backend OrderProcessed.courrier. */
   courrier?: {
     name?: string;

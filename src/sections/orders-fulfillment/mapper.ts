@@ -83,6 +83,12 @@ const mapProcessing = (records?: ApiOrderProcessed[] | null): OrderProcessing | 
     shippingCost: latest.shippingCost ?? undefined,
     shippingReceipt: text(latest.shippingReceipt),
     shippingNote: text(latest.shippingNote),
+    trackingNumbers: (latest.trackingNumbers ?? [])
+      .map((tn) => ({
+        trackingNumber: (tn?.trackingNumber ?? '').trim(),
+        carrierName: (tn?.carrierName ?? '').trim(),
+      }))
+      .filter((tn) => tn.trackingNumber !== ''),
     courrier: latest.courrier
       ? {
           name: text(latest.courrier.name),
@@ -131,6 +137,7 @@ export const mapApiOrderToFulfillment = (order: ApiOrder, t: Translate): Order =
       variantImage: variantImageUrl(item.variant),
       slug: item.product?.slug ?? undefined,
       scrapingUrl: item.product?.scrappingUrl ?? undefined,
+      serialNumber: text(item.productSerialNumber),
     };
   });
 

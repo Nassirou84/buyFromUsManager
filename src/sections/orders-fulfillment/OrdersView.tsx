@@ -42,12 +42,19 @@ interface OrdersViewProps {
   /** Order uid search; filtered server-side (uid partial match). */
   searchValue: string;
   onSearchChange: (value: string) => void;
+  /** 1-based page currently loaded (GET /orders is paginated server-side). */
+  page: number;
+  /** Orders per page, as the backend paginates them (ORDERS_PAGE_SIZE). */
+  pageSize: number;
+  /** Total orders matching the active status/search, across every page. */
+  totalItems: number;
+  onPageChange: (page: number) => void;
   /** Open the order whose uid was decoded from a scanned QR code. */
   onScanOrder: (uid: string) => void;
   onOpenOrder: (order: Order) => void;
 }
 
-export const OrdersView: React.FC<OrdersViewProps> = ({ orders, summary, isLoading, isFetching, statusFilter, onStatusFilterChange, sortValue, onSortChange, searchValue, onSearchChange, onScanOrder, onOpenOrder }) => {
+export const OrdersView: React.FC<OrdersViewProps> = ({ orders, summary, isLoading, isFetching, statusFilter, onStatusFilterChange, sortValue, onSortChange, searchValue, onSearchChange, page, pageSize, totalItems, onPageChange, onScanOrder, onOpenOrder }) => {
   const { t } = useLocales();
   const [isCarrierModalOpen, setIsCarrierModalOpen] = useState(false);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -123,6 +130,27 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, summary, isLoadi
 
   // Both the status column and the uid search are applied by the backend
   // (GET /orders?status[]=…&uid=…), so the returned page is already filtered.
+
+  // Pagination is server-side too: `orders` is just the loaded page, and totalItems
+  // counts every match. The footer range is derived from the page number so it stays
+  // right while a background refetch is still in flight.
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const rangeStart = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(rangeStart + orders.length - 1, totalItems);
+
+  // Page numbers with ellipsis: first, last, and a window around the current page.
+  const pageItems: (number | 'ellipsis-start' | 'ellipsis-end')[] = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pageItems.push(i);
+  } else {
+    const start = Math.max(2, Math.min(page - 1, totalPages - 4));
+    const end = Math.min(totalPages - 1, Math.max(page + 1, 5));
+    pageItems.push(1);
+    if (start > 2) pageItems.push('ellipsis-start');
+    for (let i = start; i <= end; i++) pageItems.push(i);
+    if (end < totalPages - 1) pageItems.push('ellipsis-end');
+    pageItems.push(totalPages);
+  }
 
   // Shows the order's actual current status (raw backend status), with a distinct
   // colour and icon per lifecycle stage (see STATUS_BADGE). The label falls back to
@@ -424,6 +452,57 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, summary, isLoadi
             </div>
           ))}
         </div>
+        )}
+
+        {/* PAGINATION — the loaded page is one slice of the server-side result set */}
+        {!isLoading && totalItems > 0 && (
+          <div className="mt-1 bg-white dark:bg-[#131b2e] px-4 py-3 rounded-xl border border-[#e5eeff] dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3 text-[12px]">
+            <span className="text-[#565e74] dark:text-slate-400 whitespace-nowrap">
+              {t('orders_showing_footer', { from: rangeStart, to: rangeEnd, total: totalItems })}
+            </span>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => onPageChange(page - 1)}
+                aria-label={t('orders_prev_page')}
+                title={t('orders_prev_page')}
+                className="p-1 rounded border border-[#c3c6d7] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0b1c30] dark:text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#eff4ff] dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <Icon name="chevron_left" className="text-[16px]" />
+              </button>
+              {pageItems.map((item) =>
+                typeof item === 'number' ? (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => onPageChange(item)}
+                    aria-current={item === page ? 'page' : undefined}
+                    className={
+                      item === page
+                        ? 'w-7 h-7 rounded bg-[#004ac6] text-white font-bold text-[12px] flex items-center justify-center shadow-xs cursor-pointer'
+                        : 'w-7 h-7 rounded bg-white dark:bg-slate-800 border border-[#c3c6d7] dark:border-slate-700 hover:bg-[#eff4ff] dark:hover:bg-slate-700 text-[#0b1c30] dark:text-white text-[12px] flex items-center justify-center transition-colors cursor-pointer'
+                    }
+                  >
+                    {item}
+                  </button>
+                ) : (
+                  <span key={item} className="text-[#737686] px-0.5">...</span>
+                )
+              )}
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => onPageChange(page + 1)}
+                aria-label={t('orders_next_page')}
+                title={t('orders_next_page')}
+                className="p-1 rounded border border-[#c3c6d7] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0b1c30] dark:text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#eff4ff] dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <Icon name="chevron_right" className="text-[16px]" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
