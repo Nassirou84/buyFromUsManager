@@ -96,7 +96,7 @@ export type PromoFormValues = {
   isActive: boolean;
 };
 
-// `terms` is left out when editing so the audience rule of an existing code is never overwritten.
+// `terms` is left out here; new codes get NEW_PROMO_TERMS and duplicates keep the source code's rule.
 export const buildPromoPayload = (values: PromoFormValues): Omit<PromoCodePayload, 'terms'> => ({
   code: values.code.trim().toUpperCase(),
   campaignLabel: values.campaignLabel.trim() || null,

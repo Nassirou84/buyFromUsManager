@@ -59,6 +59,8 @@ export interface ApiReturnOrderItem {
   unitPrice?: number;
   variant?: ApiVariant | null;
   variantLabel?: string | null;
+  // Serial number recorded at fulfillment (POST /order_items/add_serial_number).
+  productSerialNumber?: string | null;
 }
 
 // One returned line: how many of which order item, and why.
@@ -67,6 +69,14 @@ export interface ApiProductReturnItem {
   quantity?: number;
   reason?: string;
   orderItem?: ApiReturnOrderItem;
+  // Inspection result (PATCH /product-returns/uid/{uid}/item/{itemId}/condition).
+  itemCondition?: string | null;
+  itemControls?: string[] | null;
+  inspectedAt?: string | null;
+  // Per-item decision (POST /product-returns/item/{itemId}/approve | /reject). Only
+  // present once the backend adds `decision` / `decidedAt` to the product_return:read group.
+  decision?: string | null;
+  decidedAt?: string | null;
 }
 
 // The order the return belongs to. Now embedded under product_return:read with the
@@ -102,6 +112,9 @@ export interface ApiProductReturn {
   additionalDetails: string | null;
   returnOrder?: ApiReturnOrder;
   returnItems?: ApiProductReturnItem[];
+  // Inspector note (POST /product-returns/uid/{uid}/add-note). Only present once the
+  // backend adds `returnNote` to the product_return:read group.
+  returnNote?: string | null;
 }
 
 // API Platform admin collection: GET /product_returns (product_return:read).

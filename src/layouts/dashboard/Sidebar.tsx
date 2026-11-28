@@ -45,8 +45,8 @@ const NAV_SECTIONS: {
     items: [
       { key: 'catalog-scraping', labelKey: 'nav_catalog_scraping', icon: Package },
       { key: 'orders-fulfillment', labelKey: 'nav_orders_fulfillment', icon: Truck },
-      { key: 'returns-rmas', labelKey: 'nav_returns_rmas', icon: Undo2 },
       { key: 'delivery-fleet', labelKey: 'nav_delivery_fleet', icon: Bus },
+      { key: 'returns-rmas', labelKey: 'nav_returns_rmas', icon: Undo2 },
       { key: 'store-customers', labelKey: 'nav_store_customers', icon: Users },
     ],
   },
@@ -95,9 +95,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Header Branding */}
         <div className={`p-5 flex items-center ${collapsed ? 'justify-center' : 'justify-between'} border-b border-[#f0f4ff] dark:border-slate-800`}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#004ac6] flex items-center justify-center text-white font-bold text-lg shadow-sm">
-              F
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.svg" alt="Flot Boutique" className="w-8 h-8 rounded-lg shadow-sm object-contain shrink-0" />
             {!collapsed && (
               <div className="flex flex-col">
                 <span className="font-bold text-[17px] text-[#0b1c30] dark:text-white tracking-tight leading-tight">

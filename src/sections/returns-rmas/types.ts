@@ -4,7 +4,12 @@ import { ProductReturnStatus, RefundType } from '@/api/returns/get-product-retur
 export type RmaStatus = ProductReturnStatus;
 export type { RefundType };
 
-export type ItemCondition = 'Pristine / Grade A' | 'Grade B (Light Wear)' | 'Damaged / Unsellable';
+// Inspection grade codes, stored as-is in ProductReturnItem.itemCondition.
+export type ItemCondition = 'grade_a' | 'grade_b' | 'unsellable';
+export const ITEM_CONDITIONS: ItemCondition[] = ['grade_a', 'grade_b', 'unsellable'];
+
+// Per-item decision codes, stored as-is in ProductReturnItem.decision.
+export type ReturnItemDecision = 'approved' | 'rejected';
 
 // Per-item inspection checks performed at intake.
 export interface PackagingCheck {
@@ -16,12 +21,12 @@ export interface PackagingCheck {
   itemMatch: boolean;
 }
 
-export interface RmaAuditNote {
-  author: string;
-  role: string;
-  date: string;
-  message: string;
-}
+// Control codes stored in ProductReturnItem.itemControls (the checks that passed).
+export const PACKAGING_CONTROL_CODES: Record<keyof PackagingCheck, string> = {
+  packagingKept: 'packaging_kept',
+  returnCauseChecked: 'return_cause_checked',
+  itemMatch: 'item_match',
+};
 
 // The order a return belongs to, assembled from the embedded returnOrder.
 export interface RmaOrder {
@@ -41,17 +46,28 @@ export interface RmaOrder {
 
 // A single returned line, assembled from the embedded orderItem on a product return.
 export interface RmaLine {
+  /** ProductReturnItem.id, used to address the line on the inspection endpoint. */
+  itemId?: number;
   title: string;
+  /** Storefront product slug, for the "view on storefront" link. */
+  slug?: string;
   productImage: string;
   variantImage: string;
   variantLabel: string;
   quantity: number;
   unitPrice: number;
   reason: string;
+  /** Product SKU (Product.uid, same as the orders module); '' when missing. */
+  sku: string;
+  /** Serial number recorded on the order item at fulfillment ('' when none). */
+  orderSerialNumber: string;
   // Inspection grade and packaging/accessory checks for this specific item
-  // (client-side; no backend field yet).
-  condition: ItemCondition;
+  // (ProductReturnItem.itemCondition / itemControls). Null until graded.
+  condition: ItemCondition | null;
   packagingCheck: PackagingCheck;
+  // Approve / reject decision for this specific item (ProductReturnItem.decision).
+  // Null until decided.
+  decision: ReturnItemDecision | null;
 }
 
 export interface RmaItem {
@@ -84,7 +100,8 @@ export interface RmaItem {
   reimbursementTotal: number;
   payoutDestination: string;
   isStoreCreditBonusApplied: boolean;
-  auditNotes: RmaAuditNote[];
+  /** Inspector note (ProductReturn.returnNote); required before approving or rejecting. */
+  inspectorNote: string;
   // Fields sourced from GET /product_returns (product_return:read).
   refundType: RefundType;
   createdAtStr: string;

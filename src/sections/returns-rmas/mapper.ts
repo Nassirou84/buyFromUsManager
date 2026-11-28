@@ -1,5 +1,14 @@
 import { ApiProductReturn, ApiProductReturnItem, ApiReturnOrder } from '@/api/returns/get-product-returns';
-import { RmaItem, RmaLine, RmaOrder } from './types';
+import {
+  ITEM_CONDITIONS,
+  PACKAGING_CONTROL_CODES,
+  type ItemCondition,
+  type PackagingCheck,
+  type ReturnItemDecision,
+  type RmaItem,
+  type RmaLine,
+  type RmaOrder,
+} from './types';
 
 // Format the backend ISO timestamp to a short, locale-neutral label for the list.
 const formatCreatedAt = (iso: string): string => {
@@ -49,6 +58,24 @@ const toOrder = (order: ApiReturnOrder | undefined): RmaOrder | null => {
   };
 };
 
+// Only accept the grade codes this UI knows; anything else reads as "not graded".
+const toCondition = (value?: string | null): ItemCondition | null =>
+  ITEM_CONDITIONS.includes(value as ItemCondition) ? (value as ItemCondition) : null;
+
+// Only accept the decision codes this UI knows; anything else reads as "undecided".
+const toDecision = (value?: string | null): ReturnItemDecision | null =>
+  value === 'approved' || value === 'rejected' ? value : null;
+
+// itemControls lists the checks that passed; every other check is unticked.
+const toPackagingCheck = (controls?: string[] | null): PackagingCheck => {
+  const passed = new Set(controls ?? []);
+  return {
+    packagingKept: passed.has(PACKAGING_CONTROL_CODES.packagingKept),
+    returnCauseChecked: passed.has(PACKAGING_CONTROL_CODES.returnCauseChecked),
+    itemMatch: passed.has(PACKAGING_CONTROL_CODES.itemMatch),
+  };
+};
+
 // Assemble one return line from the embedded orderItem. The product cover is the
 // "return image"; the selected variant carries its own label and photo.
 const toLine = (item: ApiProductReturnItem): RmaLine => {
@@ -58,7 +85,9 @@ const toLine = (item: ApiProductReturnItem): RmaLine => {
   const variantImage = typeof variant?.image === 'string' ? variant.image : '';
 
   return {
+    itemId: item.id,
     title: product?.title ?? '',
+    slug: product?.slug ?? undefined,
     productImage: product?.coverImage ?? '',
     variantImage,
     variantLabel: orderItem?.variantLabel ?? '',
@@ -66,12 +95,11 @@ const toLine = (item: ApiProductReturnItem): RmaLine => {
     quantity: item.quantity ?? 0,
     unitPrice: orderItem?.unitPrice ?? product?.actualPrice ?? 0,
     reason: item.reason ?? '',
-    condition: 'Pristine / Grade A',
-    packagingCheck: {
-      packagingKept: false,
-      returnCauseChecked: false,
-      itemMatch: false,
-    },
+    sku: product?.uid ?? '',
+    orderSerialNumber: orderItem?.productSerialNumber?.trim() ?? '',
+    condition: toCondition(item.itemCondition),
+    packagingCheck: toPackagingCheck(item.itemControls),
+    decision: toDecision(item.decision),
   };
 };
 
@@ -108,7 +136,7 @@ export const mapApiProductReturn = (api: ApiProductReturn): RmaItem => {
     slaRemaining: '',
     status: api.status,
     bay: '',
-    condition: 'Pristine / Grade A',
+    condition: 'grade_a',
     packagingCheck: {
       packagingKept: false,
       returnCauseChecked: false,
@@ -122,7 +150,7 @@ export const mapApiProductReturn = (api: ApiProductReturn): RmaItem => {
     reimbursementTotal: returnedValue,
     payoutDestination: '',
     isStoreCreditBonusApplied: false,
-    auditNotes: [],
+    inspectorNote: api.returnNote?.trim() ?? '',
     refundType: api.refundtype,
     createdAtStr: formatCreatedAt(api.createdAt),
     itemCount,

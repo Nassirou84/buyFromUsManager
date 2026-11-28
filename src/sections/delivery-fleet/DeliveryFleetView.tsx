@@ -753,6 +753,14 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
                                   minute: '2-digit',
                                 })
                               : undefined;
+                            const completedAt = delivery.completedAt
+                              ? new Date(delivery.completedAt).toLocaleString([], {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : undefined;
 
                             return (
                               <div
@@ -810,11 +818,11 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
                                   </div>
 
                                   <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[#565e74] dark:text-slate-400 text-[12px] mt-1">
-                                    {/* Grouped stops show the shared address in the group header instead. */}
-                                    {!isGrouped && group.address && (
-                                      <span className="flex items-center gap-1">
-                                        <Icon name="pin_drop" className="text-[14px]" />
-                                        {group.address}
+                                    {/* Show the delivery's full address on every row. */}
+                                    {deliveryAddress(delivery) && (
+                                      <span className="flex items-start gap-1">
+                                        <Icon name="pin_drop" className="text-[14px] mt-0.5 flex-shrink-0" />
+                                        {deliveryAddress(delivery)}
                                       </span>
                                     )}
                                     {order?.phone && (
@@ -827,6 +835,12 @@ export const DeliveryFleetView: React.FC<DeliveryFleetViewProps> = ({
                                       <span className="flex items-center gap-1 text-[#004ac6] dark:text-blue-400 font-semibold">
                                         <Icon name="schedule" className="text-[14px]" />
                                         {t('fleet_itinerary_started_at', { time: startedAt })}
+                                      </span>
+                                    )}
+                                    {delivery.isCompleted && completedAt && (
+                                      <span className="flex items-center gap-1 text-[#2563eb] dark:text-blue-400 font-semibold">
+                                        <Icon name="task_alt" className="text-[14px]" />
+                                        {t('fleet_itinerary_delivered_at', { time: completedAt })}
                                       </span>
                                     )}
                                   </div>

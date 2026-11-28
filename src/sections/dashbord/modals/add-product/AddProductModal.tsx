@@ -238,7 +238,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       }}
       className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 md:p-6"
     >
-      <div className="bg-white dark:bg-[#131b2e] rounded-2xl max-w-4xl lg:max-w-5xl w-full p-5 sm:p-7 shadow-2xl border border-[#dce9ff] dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-5 max-h-[92vh] overflow-y-auto">
+      <div className="bg-white dark:bg-[#131b2e] rounded-2xl max-w-5xl lg:max-w-6xl xl:max-w-7xl w-full p-5 sm:p-7 shadow-2xl border border-[#dce9ff] dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-5 max-h-[92vh] overflow-y-auto">
         <ModalHeader step={step} onClose={onClose} />
         <Stepper step={step} />
 

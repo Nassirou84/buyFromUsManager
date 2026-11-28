@@ -137,4 +137,25 @@ body {
     max-width: none !important;
     min-height: 0 !important;
   }
+
+  /* Return slips: same label stock, one item per label, so each slip starts a new
+     page. The preview's spacing between slips is dropped on paper. */
+  .receipt-page.return-slip-page {
+    margin: 3mm;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    break-after: page;
+    break-inside: avoid;
+  }
+
+  .receipt-page.return-slip-page:last-child {
+    break-after: auto;
+  }
+
+  .receipt-print-root:has(.return-slip-page) > * > div:last-child {
+    gap: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
 }

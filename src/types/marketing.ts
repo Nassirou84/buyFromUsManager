@@ -18,7 +18,7 @@ export interface PromoCode {
   validityNote: string; // e.g. "No Expiration Date", "Ends in 8 days"
   isActive: boolean;
   isExpiringSoon: boolean;
-  terms: string; // audience rule kept so edits and duplicates don't change it
+  terms: string; // audience rule kept so duplicates don't change it
   target: string | null;
 }
 

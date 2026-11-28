@@ -12,6 +12,11 @@ const inter = Inter({
   subsets: ['latin'],
 });
 
+export const metadata = {
+  title: 'Flot Boutique — Admin',
+  icons: { icon: '/logo.svg' },
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

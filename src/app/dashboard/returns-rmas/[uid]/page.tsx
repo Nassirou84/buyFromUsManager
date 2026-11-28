@@ -60,5 +60,13 @@ export default function Page() {
     );
   }
 
-  return <ReturnDetailView rma={rma} onUpdate={setEdited} onBack={backToList} />;
+  // Edits apply to the latest local copy (or the resolved return on the first edit).
+  const current = rma;
+  return (
+    <ReturnDetailView
+      rma={rma}
+      onUpdate={(updater) => setEdited((prev) => updater(prev ?? current))}
+      onBack={backToList}
+    />
+  );
 }

@@ -6,8 +6,16 @@ import { Icon } from '@/components/lucide-icon';
 import { PromoCode } from '@/types/marketing';
 import useGetPromoCodes, { GET_PROMO_CODES_QUERY_KEY } from '@/api/promo-code/get-promo-codes';
 import usePostPromoCode from '@/api/promo-code/post-promo-code';
-import usePatchPromoCode from '@/api/promo-code/patch-promo-code';
-import useDeletePromoCode from '@/api/promo-code/delete-promo-code';
+import useTerminatePromoCode from '@/api/promo-code/terminate-promo-code';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   buildDuplicatePayload,
   buildPromoPayload,
@@ -27,13 +35,15 @@ export const PromotionsView: React.FC = () => {
 
   const { data: apiPromos, isLoading, isError, refetch } = useGetPromoCodes();
   const { mutate: postPromo, isPending: isCreating } = usePostPromoCode();
-  const { mutate: patchPromo, isPending: isUpdating } = usePatchPromoCode();
-  const { mutate: deletePromo } = useDeletePromoCode();
+  // Promo codes are immutable once created (past orders and refunds depend on their
+  // terms): there is no edit or delete, only terminate, which ends a code for good.
+  const { mutate: terminatePromo, isPending: isTerminating } = useTerminatePromoCode();
 
   const promos = useMemo(() => (apiPromos ?? []).map((promo) => mapApiPromo(promo, t)), [apiPromos, t]);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingPromo, setEditingPromo] = useState<PromoCode | null>(null);
+  // Code waiting for the "end code" confirmation (null = dialog closed).
+  const [terminatingPromo, setTerminatingPromo] = useState<PromoCode | null>(null);
   const [analyticsPromo, setAnalyticsPromo] = useState<PromoCode | null>(null);
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -51,36 +61,7 @@ export const PromotionsView: React.FC = () => {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: GET_PROMO_CODES_QUERY_KEY });
 
-  const handleTogglePromoStatus = (promo: PromoCode) => {
-    patchPromo(
-      { id: promo.id, data: { isActive: !promo.isActive } },
-      {
-        onSuccess: () => {
-          refresh();
-          toast.success(t(promo.isActive ? 'promo_deactivated' : 'promo_activated', { code: promo.code }));
-        },
-        onError: () => toast.error(t('promo_update_failed')),
-      }
-    );
-  };
-
   const handleSavePromo = (payload: ReturnType<typeof buildPromoPayload>) => {
-    if (editingPromo) {
-      patchPromo(
-        { id: editingPromo.id, data: payload },
-        {
-          onSuccess: () => {
-            refresh();
-            toast.success(t('promo_updated', { code: payload.code }));
-            setIsCreateOpen(false);
-            setEditingPromo(null);
-          },
-          onError: (error) =>
-            toast.error(t(isDuplicateCodeError(error) ? 'promo_code_exists' : 'promo_update_failed')),
-        }
-      );
-      return;
-    }
     postPromo(
       { ...payload, terms: NEW_PROMO_TERMS },
       {
@@ -110,13 +91,16 @@ export const PromotionsView: React.FC = () => {
     );
   };
 
-  const handleDeletePromo = (promo: PromoCode) => {
-    deletePromo(promo.id, {
+  // End a code for good (after confirmation). The dialog stays open on error so the
+  // admin can retry.
+  const handleTerminatePromo = (promo: PromoCode) => {
+    terminatePromo(promo.id, {
       onSuccess: () => {
         refresh();
-        toast.success(t('promo_deleted', { code: promo.code }));
+        setTerminatingPromo(null);
+        toast.success(t('promo_terminated', { code: promo.code }));
       },
-      onError: () => toast.error(t('promo_delete_failed')),
+      onError: () => toast.error(t('promo_terminate_failed')),
     });
   };
 
@@ -131,7 +115,7 @@ export const PromotionsView: React.FC = () => {
       const matchStatus =
         statusFilter === 'all' ||
         (statusFilter === 'active' && p.isActive) ||
-        (statusFilter === 'paused' && !p.isActive) ||
+        (statusFilter === 'ended' && !p.isActive) ||
         (statusFilter === 'expiring' && p.isExpiringSoon);
       return matchSearch && matchType && matchStatus;
     });
@@ -143,13 +127,13 @@ export const PromotionsView: React.FC = () => {
     return filteredPromos.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredPromos, currentPage]);
 
-  // Deleting can leave the current page past the end
+  // Filtering can leave the current page past the end
   React.useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
   const activeCount = promos.filter((p) => p.isActive).length;
-  const pausedCount = promos.length - activeCount;
+  const endedCount = promos.length - activeCount;
   const expiringCount = promos.filter((p) => p.isActive && p.isExpiringSoon).length;
   const totalClaims = promos.reduce((sum, p) => sum + p.currentClaims, 0);
 
@@ -162,7 +146,7 @@ export const PromotionsView: React.FC = () => {
       `"${p.discountDisplay}"`,
       p.currentClaims,
       p.maxClaims || t('promo_unlimited'),
-      p.isActive ? t('active') : t('promo_paused'),
+      p.isActive ? t('active') : t('promo_ended'),
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const link = document.createElement('a');
@@ -191,10 +175,7 @@ export const PromotionsView: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => {
-            setEditingPromo(null);
-            setIsCreateOpen(true);
-          }}
+          onClick={() => setIsCreateOpen(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#004ac6] hover:bg-[#2563eb] text-white rounded-lg text-xs font-semibold shadow-xs transition-colors duration-150"
         >
           <Icon name="add" className="text-[18px]" />
@@ -230,7 +211,7 @@ export const PromotionsView: React.FC = () => {
                   {expiringCount} {t('promo_expiring_soon')}
                 </span>
                 <span className="text-gray-300 dark:text-gray-600">/</span>
-                <span>{pausedCount} {t('promo_paused')}</span>
+                <span>{endedCount} {t('promo_ended')}</span>
               </div>
             </div>
           </div>
@@ -317,7 +298,7 @@ export const PromotionsView: React.FC = () => {
             >
               <option value="all">{t('promo_all_statuses')}</option>
               <option value="active">{t('active')}</option>
-              <option value="paused">{t('promo_paused')}</option>
+              <option value="ended">{t('promo_ended')}</option>
               <option value="expiring">{t('promo_expiring_soon')}</option>
             </select>
             <Icon name="expand_more" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none text-[18px]" />
@@ -488,26 +469,19 @@ export const PromotionsView: React.FC = () => {
                       </div>
                     </td>
 
-                    {/* Status Toggle */}
+                    {/* Status (read-only: a code can only be ended, never switched back on) */}
                     <td className="py-4 px-6">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          checked={promo.isActive}
-                          onChange={() => handleTogglePromoStatus(promo)}
-                          className="sr-only peer"
-                          type="checkbox"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#004ac6]"></div>
-                        <span
-                          className={`ml-2 text-xs font-medium ${
-                            promo.isActive
-                              ? 'text-[#0b1c30] dark:text-white font-semibold'
-                              : 'text-gray-400'
-                          }`}
-                        >
-                          {promo.isActive ? t('active') : t('promo_paused')}
+                      {promo.isActive ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          {t('active')}
                         </span>
-                      </label>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[11px] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                          {t('promo_ended')}
+                        </span>
+                      )}
                     </td>
 
                     {/* Actions */}
@@ -521,29 +495,21 @@ export const PromotionsView: React.FC = () => {
                           <Icon name="query_stats" className="text-[19px]" />
                         </button>
                         <button
-                          onClick={() => {
-                            setEditingPromo(promo);
-                            setIsCreateOpen(true);
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-[#004ac6] dark:hover:text-blue-400 hover:bg-[#eff4ff] dark:hover:bg-gray-700 rounded transition-colors"
-                          title={t('promo_edit')}
-                        >
-                          <Icon name="edit" className="text-[19px]" />
-                        </button>
-                        <button
                           onClick={() => handleDuplicatePromo(promo)}
                           className="p-1.5 text-gray-400 hover:text-[#004ac6] dark:hover:text-blue-400 hover:bg-[#eff4ff] dark:hover:bg-gray-700 rounded transition-colors"
                           title={t('promo_duplicate')}
                         >
                           <Icon name="content_copy" className="text-[19px]" />
                         </button>
-                        <button
-                          onClick={() => handleDeletePromo(promo)}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
-                          title={t('promo_delete')}
-                        >
-                          <Icon name="delete" className="text-[19px]" />
-                        </button>
+                        {promo.isActive && (
+                          <button
+                            onClick={() => setTerminatingPromo(promo)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
+                            title={t('promo_terminate')}
+                          >
+                            <Icon name="cancel" className="text-[19px]" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -596,17 +562,47 @@ export const PromotionsView: React.FC = () => {
 
       {isCreateOpen && (
         <CreatePromoModal
-          key={editingPromo?.id ?? 'new'}
           isOpen={isCreateOpen}
-          onClose={() => {
-            setIsCreateOpen(false);
-            setEditingPromo(null);
-          }}
+          onClose={() => setIsCreateOpen(false)}
           onSave={handleSavePromo}
-          isSaving={isCreating || isUpdating}
-          initialData={editingPromo}
+          isSaving={isCreating}
         />
       )}
+
+      {/* "End code" confirmation: terminating can't be undone. The confirm button is a
+          plain button (not AlertDialogAction) so the dialog stays open while it runs. */}
+      <AlertDialog
+        open={terminatingPromo !== null}
+        onOpenChange={(open) => !open && !isTerminating && setTerminatingPromo(null)}
+      >
+        <AlertDialogContent className="max-w-md bg-white dark:bg-[#131b2e] border-[#e5eeff] dark:border-gray-800">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[16px] text-[#0b1c30] dark:text-white">
+              {t('promo_terminate_dialog_title', { code: terminatingPromo?.code ?? '' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[13px] text-[#565e74] dark:text-gray-400">
+              {t('promo_terminate_dialog_message')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isTerminating} className="text-[13px]">
+              {t('cancel')}
+            </AlertDialogCancel>
+            <button
+              type="button"
+              onClick={() => terminatingPromo && handleTerminatePromo(terminatingPromo)}
+              disabled={isTerminating}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-[13px] rounded-md shadow-sm transition-colors flex items-center justify-center gap-1.5 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Icon
+                name={isTerminating ? 'progress_activity' : 'cancel'}
+                className={`text-[16px] ${isTerminating ? 'animate-spin' : ''}`}
+              />
+              {t('promo_terminate_dialog_confirm')}
+            </button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <PromoAnalyticsModal promo={analyticsPromo} onClose={() => setAnalyticsPromo(null)} />
     </div>

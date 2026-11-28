@@ -2,40 +2,34 @@ import useLocales from '@/locales/use-locales';
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { Icon } from '@/components/lucide-icon';
-import { PromoCode, PromoType } from '@/types/marketing';
-import { buildPromoPayload, PROMO_TYPES, toDateInputValue } from '../mapper';
+import { PromoType } from '@/types/marketing';
+import { buildPromoPayload, PROMO_TYPES } from '../mapper';
 
 interface CreatePromoModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (payload: ReturnType<typeof buildPromoPayload>) => void;
   isSaving?: boolean;
-  initialData?: PromoCode | null;
 }
+
+// Create-only: promo codes can't be edited once created, so every code is created
+// active (use the start date to schedule one) and can later only be ended.
 
 export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
   isOpen,
   onClose,
   onSave,
   isSaving = false,
-  initialData,
 }) => {
   const { t } = useLocales();
-  const [code, setCode] = useState(initialData?.code || '');
-  const [campaignLabel, setCampaignLabel] = useState(initialData?.campaignLabel || '');
-  const [type, setType] = useState<PromoType>(initialData?.type || 'percentage');
-  const [discountValue, setDiscountValue] = useState<number>(initialData?.discountValue || 20);
-  const [maxClaims, setMaxClaims] = useState<string>(
-    initialData?.maxClaims !== undefined && initialData?.maxClaims !== null
-      ? String(initialData.maxClaims)
-      : '500'
-  );
-  const [minSpend, setMinSpend] = useState<string>(
-    initialData ? String(initialData.minSpend ?? '') : '100.00'
-  );
-  const [startsAt, setStartsAt] = useState(toDateInputValue(initialData?.startsAt));
-  const [expiresAt, setExpiresAt] = useState(toDateInputValue(initialData?.expiresAt));
-  const [immediateActivation, setImmediateActivation] = useState(initialData?.isActive ?? true);
+  const [code, setCode] = useState('');
+  const [campaignLabel, setCampaignLabel] = useState('');
+  const [type, setType] = useState<PromoType>('percentage');
+  const [discountValue, setDiscountValue] = useState<number>(20);
+  const [maxClaims, setMaxClaims] = useState<string>('500');
+  const [minSpend, setMinSpend] = useState<string>('100.00');
+  const [startsAt, setStartsAt] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
 
   if (!isOpen) return null;
 
@@ -63,7 +57,7 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
         minSpend,
         startsAt,
         expiresAt,
-        isActive: immediateActivation,
+        isActive: true,
       })
     );
   };
@@ -75,11 +69,11 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
         <div className="p-6 bg-[#eff4ff] dark:bg-gray-800/80 flex items-center justify-between border-b border-[#e5eeff] dark:border-gray-700">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#004ac6] flex items-center justify-center text-white shadow-xs">
-              <Icon name={initialData ? 'edit' : 'add_circle'} className="text-[18px]" />
+              <Icon name="add_circle" className="text-[18px]" />
             </div>
             <div className="flex flex-col">
               <h3 className="font-semibold text-lg text-[#0b1c30] dark:text-white leading-tight">
-                {t(initialData ? 'promo_modal_edit_title' : 'promo_modal_create_title')}
+                {t('promo_modal_create_title')}
               </h3>
               <span className="text-xs text-[#565e74] dark:text-gray-400">
                 {t('promo_modal_subtitle')}
@@ -228,25 +222,10 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
             </div>
           </div>
 
-          {/* Immediate Activation Toggle */}
-          <div className="flex items-center justify-between p-4 bg-[#eff4ff] dark:bg-gray-800/60 rounded-lg">
-            <div className="flex flex-col">
-              <span className="text-xs font-semibold text-[#0b1c30] dark:text-white">
-                {t('promo_immediate_activation')}
-              </span>
-              <span className="text-[11px] text-[#565e74] dark:text-gray-400">
-                {t('promo_publish_instantly')}
-              </span>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                checked={immediateActivation}
-                onChange={(e) => setImmediateActivation(e.target.checked)}
-                className="sr-only peer"
-                type="checkbox"
-              />
-              <div className="w-11 h-6 bg-gray-300 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#004ac6]"></div>
-            </label>
+          {/* Codes are immutable once created */}
+          <div className="flex items-start gap-2 p-4 bg-[#ffdbcd]/40 dark:bg-amber-900/20 rounded-lg text-[#943700] dark:text-amber-300">
+            <Icon name="info" className="text-[16px] mt-px shrink-0" />
+            <span className="text-[11px] font-medium">{t('promo_immutable_hint')}</span>
           </div>
 
           {/* Modal Actions */}
@@ -263,7 +242,7 @@ export const CreatePromoModal: React.FC<CreatePromoModalProps> = ({
               type="submit"
               disabled={isSaving}
             >
-              {t(initialData ? 'promo_save_changes' : 'promo_deploy')}
+              {t('promo_deploy')}
             </button>
           </div>
         </form>
